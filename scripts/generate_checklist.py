@@ -6,11 +6,12 @@ from pathlib import Path
 from detect_project import detect_project
 
 
-def build_checklist(project_root: Path, app_name: str, deploy_mode: str, test_branch: str) -> str:
+def build_checklist(project_root: Path, service_path: str, app_name: str, deploy_mode: str, test_branch: str) -> str:
     lines = [
         "# GitHub CI/CD Setup Checklist",
         "",
         f"- 项目目录：`{project_root}`",
+        f"- 服务路径：`{service_path}`",
         f"- 应用名称：`{app_name}`",
         f"- 部署模式：`{deploy_mode}`",
         f"- 测试分支：`{test_branch}`",
@@ -56,18 +57,18 @@ def build_checklist(project_root: Path, app_name: str, deploy_mode: str, test_br
             ]
         )
 
-    lines.extend(
-        [
-            "",
-            "## 可选 Variables",
-            "",
-            "- `TEST_PORT`",
-            "- `PROD_PORT`",
-            "",
-            "## 使用说明",
-            "",
-        ]
-    )
+    lines.extend([""])
+    if deploy_mode == "docker-ssh":
+        lines.extend(
+            [
+                "## 可选 Variables",
+                "",
+                "- `TEST_PORT`",
+                "- `PROD_PORT`",
+                "",
+            ]
+        )
+    lines.extend(["## 使用说明", ""])
     if deploy_mode == "docker-ssh":
         lines.extend(
             [
@@ -106,20 +107,23 @@ def read_repo_config(project_root: Path):
 def main() -> int:
     parser = argparse.ArgumentParser(description="Generate a GitHub CI/CD setup checklist.")
     parser.add_argument("--project-root", default=".", help="Repository root")
+    parser.add_argument("--service-path", default="", help="Subdirectory of project root for monorepo service")
     parser.add_argument("--output-file", default=".github/cicd-bootstrap-checklist.md", help="Checklist output file")
     parser.add_argument("--app-name", default="", help="Override app name")
-    parser.add_argument("--deploy-mode", default="auto", help="tool-script|ghcr-ssh|auto")
+    parser.add_argument("--deploy-mode", default="auto", help="ci-only|docker-ssh|auto")
     parser.add_argument("--test-branch", default="develop", help="Test branch name")
     args = parser.parse_args()
 
     project_root = Path(args.project_root).resolve()
-    detected = detect_project(project_root)
     repo_config = read_repo_config(project_root)
+    service_path = args.service_path or repo_config.get("service_path", ".")
+    service_root = (project_root / service_path).resolve() if service_path and service_path != "." else project_root
+    detected = detect_project(service_root)
     deploy_mode = repo_config.get("deploy_mode", detected["deploy_mode"]) if args.deploy_mode == "auto" else args.deploy_mode
     app_name = args.app_name.strip() if args.app_name.strip() else str(repo_config.get("app_name", detected["app_name"]))
     test_branch = repo_config.get("test_branch", args.test_branch)
 
-    content = build_checklist(project_root, app_name, deploy_mode, test_branch)
+    content = build_checklist(project_root, service_path, app_name, deploy_mode, test_branch)
 
     output_file = Path(args.output_file).resolve()
     output_file.parent.mkdir(parents=True, exist_ok=True)

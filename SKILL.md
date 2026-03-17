@@ -20,11 +20,17 @@ Use it when the user asks to:
 Use the bootstrap script when the user wants the skill to do the full setup in one pass.
 
 ```bash
-python3 skills/github-cicd-bootstrap/scripts/bootstrap_repo.py \
+python3 scripts/bootstrap_repo.py \
   --project-root . \
   --app-name my-service \
-  --test-target my-service \
-  --prod-target my-service
+  --service-path services/api
+```
+
+If the skill is installed into the default Codex skills directory:
+```bash
+python3 ~/.codex/skills/github-cicd-bootstrap/scripts/bootstrap_repo.py \
+  --project-root . \
+  --service-path services/api
 ```
 
 This command:
@@ -39,21 +45,22 @@ This command:
 
 1. Detect the project type:
    ```bash
-   python3 skills/github-cicd-bootstrap/scripts/detect_project.py --project-root .
+   python3 scripts/detect_project.py --project-root . --service-path services/api
    ```
 2. Render workflows:
    ```bash
-   python3 skills/github-cicd-bootstrap/scripts/render_workflow.py --project-root . --output-dir .github/workflows
+   python3 scripts/render_workflow.py --project-root . --service-path services/api --output-dir .github/workflows
    ```
 3. Generate the setup checklist:
    ```bash
-   python3 skills/github-cicd-bootstrap/scripts/generate_checklist.py \
+   python3 scripts/generate_checklist.py \
      --project-root . \
+     --service-path services/api \
      --output-file .github/cicd-bootstrap-checklist.md
    ```
 4. Validate the generated files:
    ```bash
-   python3 skills/github-cicd-bootstrap/scripts/validate_workflow.py --workflow-dir .github/workflows
+   python3 scripts/validate_workflow.py --workflow-dir .github/workflows
    ```
 
 ### Optional repo config
@@ -67,11 +74,10 @@ If the repo has repeated CI/CD conventions, create:
 Example:
 ```json
 {
-  "app_name": "deposit",
+  "app_name": "my-service",
   "project_type": "go-service",
-  "deploy_mode": "tool-script",
-  "test_target": "deposit",
-  "prod_target": "deposit",
+  "deploy_mode": "docker-ssh",
+  "service_path": "services/api",
   "test_branch": "develop"
 }
 ```
@@ -105,8 +111,10 @@ Run `scripts/detect_project.py` first. It decides:
 - project type: `go-service`, `node-service`, or `docker-service`
 - package manager when relevant
 - whether the repo already has a `Dockerfile`
+- candidate service directories when the repo root itself is not directly identifiable
 
 If detection is wrong, rerun the render step with explicit flags instead of editing the detector.
+For monorepos, prefer `--service-path`.
 
 ### 2. Choose the deploy mode
 
@@ -122,8 +130,9 @@ Use `scripts/render_workflow.py`. It fills templates and writes workflow files.
 
 Recommended command for a Dockerized service:
 ```bash
-python3 skills/github-cicd-bootstrap/scripts/render_workflow.py \
+python3 scripts/render_workflow.py \
   --project-root . \
+  --service-path services/api \
   --output-dir .github/workflows \
   --deploy-mode docker-ssh \
   --app-name my-service
@@ -131,8 +140,9 @@ python3 skills/github-cicd-bootstrap/scripts/render_workflow.py \
 
 Recommended command for a non-Docker repo that still needs CI scaffolding:
 ```bash
-python3 skills/github-cicd-bootstrap/scripts/render_workflow.py \
+python3 scripts/render_workflow.py \
   --project-root . \
+  --service-path services/api \
   --output-dir .github/workflows \
   --deploy-mode ci-only \
   --app-name my-service
@@ -142,7 +152,7 @@ python3 skills/github-cicd-bootstrap/scripts/render_workflow.py \
 
 Always run:
 ```bash
-python3 skills/github-cicd-bootstrap/scripts/validate_workflow.py --workflow-dir .github/workflows
+python3 scripts/validate_workflow.py --workflow-dir .github/workflows
 ```
 
 Validation checks:
@@ -159,7 +169,8 @@ Always summarize:
 - whether branch names need adjusting
 
 Use [references/secrets-checklist.md](references/secrets-checklist.md) when summarizing setup requirements.
-Use [references/deploy-patterns.md](references/deploy-patterns.md) when deciding between internal scripts and generic SSH deployment.
+Use [references/deploy-patterns.md](references/deploy-patterns.md) when deciding between `docker-ssh` and `ci-only`.
+Use [references/repo-config.md](references/repo-config.md) when a team wants to standardize defaults across many repositories.
 If the user wants direct output in one shot, prefer `scripts/bootstrap_repo.py`.
 
 ## Guardrails
@@ -199,5 +210,5 @@ If the user wants direct output in one shot, prefer `scripts/bootstrap_repo.py`.
   - `node-service`
   - `docker-service`
 - shared deploy templates:
-  - internal script based
-  - generic SSH Docker switch
+  - `ci-only` placeholders
+  - `docker-ssh` remote Docker deployment

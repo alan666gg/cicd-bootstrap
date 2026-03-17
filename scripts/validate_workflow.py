@@ -3,14 +3,20 @@ import argparse
 import json
 import re
 from pathlib import Path
+from typing import List
+
+try:
+    import yaml
+except ImportError:  # pragma: no cover
+    yaml = None
 
 
 PLACEHOLDER_RE = re.compile(r"__[A-Z0-9_]+__")
 REQUIRED_FILES = ("ci.yml", "deploy-test.yml", "deploy-prod.yml")
 
 
-def validate_file(path: Path) -> list[str]:
-    errors: list[str] = []
+def validate_file(path: Path) -> List[str]:
+    errors: List[str] = []
     if not path.exists():
         errors.append(f"missing file: {path.name}")
         return errors
@@ -27,6 +33,22 @@ def validate_file(path: Path) -> list[str]:
     if placeholders:
         errors.append(f"{path.name}: unresolved placeholders: {', '.join(placeholders)}")
 
+    if yaml is not None:
+        try:
+            parsed = yaml.safe_load(content)
+        except Exception as exc:  # pragma: no cover
+            errors.append(f"{path.name}: yaml parse failed: {exc}")
+            return errors
+        if not isinstance(parsed, dict):
+            errors.append(f"{path.name}: top-level yaml must be a mapping")
+            return errors
+        if "on" not in parsed:
+            errors.append(f"{path.name}: top-level key 'on' missing after yaml parse")
+        if "jobs" not in parsed:
+            errors.append(f"{path.name}: top-level key 'jobs' missing after yaml parse")
+        if "jobs" in parsed and not isinstance(parsed.get("jobs"), dict):
+            errors.append(f"{path.name}: 'jobs' must be a mapping")
+
     return errors
 
 
@@ -36,8 +58,8 @@ def main() -> int:
     args = parser.parse_args()
 
     workflow_dir = Path(args.workflow_dir).resolve()
-    results: dict[str, list[str]] = {}
-    all_errors: list[str] = []
+    results = {}
+    all_errors: List[str] = []
 
     for file_name in REQUIRED_FILES:
         errors = validate_file(workflow_dir / file_name)

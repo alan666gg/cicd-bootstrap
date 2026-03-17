@@ -42,12 +42,15 @@ def render_all(
     test_target: str,
     prod_target: str,
     test_branch: str,
+    service_path: str,
 ) -> None:
     replacements = {
         "APP_NAME": app_name,
         "TEST_BRANCH": test_branch,
         "TEST_TARGET": test_target,
         "PROD_TARGET": prod_target,
+        "SERVICE_PATH": service_path,
+        "DOCKER_CONTEXT": service_path,
     }
     ci_template = load_template(choose_ci_template(project_type))
     deploy_test_template, deploy_prod_template = choose_deploy_templates(deploy_mode)
@@ -67,11 +70,12 @@ def validate_all(workflow_dir: Path) -> list:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Bootstrap GitHub CI/CD files for a repository.")
     parser.add_argument("--project-root", default=".", help="Repository root")
+    parser.add_argument("--service-path", default="", help="Subdirectory of project root for monorepo service")
     parser.add_argument("--app-name", default="", help="App/service name")
     parser.add_argument("--project-type", default="auto", help="go-service|node-service|docker-service|auto")
-    parser.add_argument("--deploy-mode", default="auto", help="tool-script|ghcr-ssh|auto")
-    parser.add_argument("--test-target", default="", help="Internal test deploy target")
-    parser.add_argument("--prod-target", default="", help="Internal prod deploy target")
+    parser.add_argument("--deploy-mode", default="auto", help="ci-only|docker-ssh|auto")
+    parser.add_argument("--test-target", default="", help="Optional test deploy target label")
+    parser.add_argument("--prod-target", default="", help="Optional production deploy target label")
     parser.add_argument("--test-branch", default="develop", help="Test branch name")
     parser.add_argument("--workflow-dir", default=".github/workflows", help="Workflow output dir")
     parser.add_argument("--checklist-file", default=".github/cicd-bootstrap-checklist.md", help="Checklist output file")
@@ -79,13 +83,19 @@ def main() -> int:
     args = parser.parse_args()
 
     project_root = Path(args.project_root).resolve()
-    detected = detect_project(project_root)
     repo_config = read_repo_config(project_root)
+    service_path = args.service_path or repo_config.get("service_path", ".")
+    service_root = (project_root / service_path).resolve() if service_path and service_path != "." else project_root
+    detected = detect_project(service_root)
     project_type = repo_config.get("project_type", detected["project_type"]) if args.project_type == "auto" else args.project_type
     deploy_mode = repo_config.get("deploy_mode", detected["deploy_mode"]) if args.deploy_mode == "auto" else args.deploy_mode
 
     if project_type == "unknown":
-        raise SystemExit("could not detect project type; rerun with --project-type")
+        hint = ""
+        candidates = detected.get("candidates") or []
+        if candidates:
+            hint = f"; try --service-path {candidates[0]}"
+        raise SystemExit(f"could not detect project type{hint}")
     app_name = normalize(args.app_name, str(repo_config.get("app_name", detected["app_name"])))
     test_target = normalize(args.test_target, repo_config.get("test_target", app_name))
     prod_target = normalize(args.prod_target, repo_config.get("prod_target", app_name))
@@ -94,13 +104,15 @@ def main() -> int:
     checklist_file = (project_root / args.checklist_file).resolve()
 
     ensure_can_write(workflow_dir, checklist_file, args.force)
-    render_all(workflow_dir, app_name, deploy_mode, project_type, test_target, prod_target, test_branch)
-    checklist_content = build_checklist(project_root, app_name, deploy_mode, test_branch)
+    render_all(workflow_dir, app_name, deploy_mode, project_type, test_target, prod_target, test_branch, service_path)
+    checklist_content = build_checklist(project_root, service_path, app_name, deploy_mode, test_branch)
     write_file(checklist_file, checklist_content)
 
     errors = validate_all(workflow_dir)
     result = {
         "project_root": str(project_root),
+        "service_root": str(service_root),
+        "service_path": args.service_path or repo_config.get("service_path", "."),
         "project_type": project_type,
         "deploy_mode": deploy_mode,
         "workflow_dir": str(workflow_dir),

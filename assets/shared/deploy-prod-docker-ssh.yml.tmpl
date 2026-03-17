@@ -20,7 +20,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Build image
-        run: docker build -t "$IMAGE_TAG" .
+        run: docker build -t "$IMAGE_TAG" __DOCKER_CONTEXT__
 
       - name: Save image tarball
         run: docker save "$IMAGE_TAG" -o "${APP_NAME}_${{ github.sha }}.tar"

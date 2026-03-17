@@ -11,19 +11,17 @@ The bootstrap flow can read an optional repository config file:
 - `app_name`
 - `project_type`
 - `deploy_mode`
-- `test_target`
-- `prod_target`
+- `service_path`
 - `test_branch`
 
 ## Example
 
 ```json
 {
-  "app_name": "walletpd",
+  "app_name": "my-service",
   "project_type": "go-service",
   "deploy_mode": "docker-ssh",
-  "test_target": "site",
-  "prod_target": "site",
+  "service_path": "services/api",
   "test_branch": "develop"
 }
 ```

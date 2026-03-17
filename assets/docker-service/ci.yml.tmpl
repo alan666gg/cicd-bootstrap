@@ -15,4 +15,4 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Validate Docker build
-        run: docker build -t __APP_NAME__:ci .
+        run: docker build -t __APP_NAME__:ci __DOCKER_CONTEXT__

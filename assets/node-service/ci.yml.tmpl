@@ -10,6 +10,9 @@ on:
 jobs:
   test-and-build:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: __SERVICE_PATH__
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -30,5 +33,5 @@ jobs:
         run: npm run build --if-present
 
       - name: Validate Docker build
-        if: ${{ hashFiles('Dockerfile') != '' }}
-        run: docker build -t __APP_NAME__:ci .
+        if: ${{ hashFiles('__DOCKER_CONTEXT__/Dockerfile') != '' }}
+        run: docker build -t __APP_NAME__:ci __DOCKER_CONTEXT__

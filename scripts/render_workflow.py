@@ -70,25 +70,32 @@ def read_repo_config(project_root: Path) -> Dict[str, str]:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Render GitHub Actions workflows from templates.")
     parser.add_argument("--project-root", default=".", help="Repository root")
+    parser.add_argument("--service-path", default="", help="Subdirectory of project root for monorepo service")
     parser.add_argument("--output-dir", default=".github/workflows", help="Workflow output directory")
     parser.add_argument("--project-type", default="auto", help="go-service|node-service|docker-service|auto")
-    parser.add_argument("--deploy-mode", default="auto", help="tool-script|ghcr-ssh|auto")
+    parser.add_argument("--deploy-mode", default="auto", help="ci-only|docker-ssh|auto")
     parser.add_argument("--app-name", default="", help="Workflow app/service name")
-    parser.add_argument("--test-target", default="", help="Internal test deploy target for tool-script mode")
-    parser.add_argument("--prod-target", default="", help="Internal prod deploy target for tool-script mode")
+    parser.add_argument("--test-target", default="", help="Optional test deploy target label")
+    parser.add_argument("--prod-target", default="", help="Optional production deploy target label")
     parser.add_argument("--test-branch", default="develop", help="Branch name for test deploy")
     args = parser.parse_args()
 
     project_root = Path(args.project_root).resolve()
-    output_dir = Path(args.output_dir).resolve()
-
-    detected = detect_project(project_root)
     repo_config = read_repo_config(project_root)
+    service_path = args.service_path or repo_config.get("service_path", ".")
+    service_root = (project_root / service_path).resolve() if service_path and service_path != "." else project_root
+    output_dir = (project_root / args.output_dir).resolve()
+
+    detected = detect_project(service_root)
     project_type = repo_config.get("project_type", detected["project_type"]) if args.project_type == "auto" else args.project_type
     deploy_mode = repo_config.get("deploy_mode", detected["deploy_mode"]) if args.deploy_mode == "auto" else args.deploy_mode
 
     if project_type == "unknown":
-        raise SystemExit("could not detect project type; rerun with --project-type")
+        hint = ""
+        candidates = detected.get("candidates") or []
+        if candidates:
+            hint = f"; try --service-path {candidates[0]}"
+        raise SystemExit(f"could not detect project type{hint}")
     app_name = normalize(args.app_name, repo_config.get("app_name", detected["app_name"]))
     test_target = normalize(args.test_target, repo_config.get("test_target", app_name))
     prod_target = normalize(args.prod_target, repo_config.get("prod_target", app_name))
@@ -102,6 +109,8 @@ def main() -> int:
         "TEST_BRANCH": test_branch,
         "TEST_TARGET": test_target,
         "PROD_TARGET": prod_target,
+        "SERVICE_PATH": service_path,
+        "DOCKER_CONTEXT": service_path,
     }
 
     write_file(output_dir / "ci.yml", render_template(ci_template, replacements))
@@ -109,6 +118,9 @@ def main() -> int:
     write_file(output_dir / "deploy-prod.yml", render_template(load_template(deploy_prod_template), replacements))
 
     summary = {
+        "project_root": str(project_root),
+        "service_root": str(service_root),
+        "service_path": service_path,
         "project_type": project_type,
         "deploy_mode": deploy_mode,
         "output_dir": str(output_dir),
