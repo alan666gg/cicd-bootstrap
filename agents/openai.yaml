@@ -1,0 +1,7 @@
+interface:
+  display_name: "GitHub CI/CD Bootstrap"
+  short_description: "自动生成 GitHub CI/CD 工作流与部署模版"
+  default_prompt: "Use $github-cicd-bootstrap to add a GitHub CI/CD pipeline for this project."
+
+policy:
+  allow_implicit_invocation: true

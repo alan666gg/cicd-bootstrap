@@ -1,0 +1,93 @@
+#!/usr/bin/env python3
+import argparse
+import json
+from pathlib import Path
+from typing import Dict, Optional
+
+
+def detect_package_manager(root: Path) -> Optional[str]:
+    if (root / "pnpm-lock.yaml").exists():
+        return "pnpm"
+    if (root / "yarn.lock").exists():
+        return "yarn"
+    if (root / "package-lock.json").exists():
+        return "npm"
+    if (root / "package.json").exists():
+        return "npm"
+    return None
+
+
+def detect_test_command(root: Path, project_type: str, package_manager: Optional[str]) -> str:
+    if project_type == "go-service":
+        return "go test ./..."
+    if project_type == "node-service":
+        if package_manager == "pnpm":
+            return "pnpm test --if-present"
+        if package_manager == "yarn":
+            return "yarn test --if-present"
+        return "npm test --if-present"
+    return "docker build -f Dockerfile ."
+
+
+def detect_build_command(root: Path, project_type: str, package_manager: Optional[str]) -> str:
+    if project_type == "go-service":
+        return "go build ./..."
+    if project_type == "node-service":
+        if package_manager == "pnpm":
+            return "pnpm build --if-present"
+        if package_manager == "yarn":
+            return "yarn build --if-present"
+        return "npm run build --if-present"
+    return "docker build -f Dockerfile ."
+
+
+def detect_project(root: Path) -> Dict[str, object]:
+    has_go_mod = (root / "go.mod").exists()
+    has_package_json = (root / "package.json").exists()
+    has_dockerfile = (root / "Dockerfile").exists()
+
+    if has_go_mod:
+        project_type = "go-service"
+    elif has_package_json:
+        project_type = "node-service"
+    elif has_dockerfile:
+        project_type = "docker-service"
+    else:
+        project_type = "unknown"
+
+    package_manager = detect_package_manager(root)
+
+    if has_dockerfile:
+        deploy_mode = "docker-ssh"
+    else:
+        deploy_mode = "ci-only"
+
+    app_name = root.name.replace("_", "-")
+
+    return {
+        "project_root": str(root),
+        "project_type": project_type,
+        "package_manager": package_manager,
+        "has_dockerfile": has_dockerfile,
+        "deploy_mode": deploy_mode,
+        "app_name": app_name,
+        "test_command": detect_test_command(root, project_type, package_manager),
+        "build_command": detect_build_command(root, project_type, package_manager),
+    }
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Detect repository shape for GitHub CI/CD generation.")
+    parser.add_argument("--project-root", default=".", help="Path to the repository root")
+    args = parser.parse_args()
+
+    root = Path(args.project_root).resolve()
+    if not root.exists():
+        raise SystemExit(f"project root does not exist: {root}")
+
+    print(json.dumps(detect_project(root), ensure_ascii=False, indent=2))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

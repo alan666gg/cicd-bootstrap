@@ -1,0 +1,14 @@
+name: Deploy Test
+
+on:
+  workflow_dispatch:
+
+jobs:
+  guidance:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Explain next step
+        run: |
+          echo "CI-only mode is enabled for __APP_NAME__."
+          echo "No automated test deployment target is configured yet."
+          echo "Choose a deployment strategy, then replace this workflow."

@@ -1,0 +1,49 @@
+name: Deploy Test
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - __TEST_BRANCH__
+
+jobs:
+  deploy-test:
+    runs-on: ubuntu-latest
+    env:
+      APP_NAME: __APP_NAME__
+      IMAGE_TAG: __APP_NAME__:${{ github.sha }}
+      TEST_HOST: ${{ vars.TEST_HOST }}
+      TEST_USER: ${{ vars.TEST_USER }}
+      TEST_PORT: ${{ vars.TEST_PORT || '22' }}
+      TEST_REMOTE_DIR: ${{ vars.TEST_REMOTE_DIR }}
+      TEST_CONTAINER_NAME: ${{ vars.TEST_CONTAINER_NAME }}
+      TEST_DOCKER_RUN_ARGS: ${{ vars.TEST_DOCKER_RUN_ARGS }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build image
+        run: docker build -t "$IMAGE_TAG" .
+
+      - name: Save image tarball
+        run: docker save "$IMAGE_TAG" -o "${APP_NAME}_${{ github.sha }}.tar"
+
+      - name: Setup SSH key
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.TEST_SSH_KEY }}
+
+      - name: Add test host to known_hosts
+        run: ssh-keyscan -p "$TEST_PORT" -H "$TEST_HOST" >> ~/.ssh/known_hosts
+
+      - name: Upload image
+        run: scp -P "$TEST_PORT" "${APP_NAME}_${{ github.sha }}.tar" "${TEST_USER}@${TEST_HOST}:${TEST_REMOTE_DIR}/"
+
+      - name: Switch container
+        run: |
+          ssh -p "$TEST_PORT" "${TEST_USER}@${TEST_HOST}" "
+            docker load -i ${TEST_REMOTE_DIR}/${APP_NAME}_${{ github.sha }}.tar &&
+            docker stop ${TEST_CONTAINER_NAME} >/dev/null 2>&1 || true &&
+            docker rm ${TEST_CONTAINER_NAME} >/dev/null 2>&1 || true &&
+            docker run -d --name ${TEST_CONTAINER_NAME} ${TEST_DOCKER_RUN_ARGS} ${IMAGE_TAG}
+          "

@@ -1,0 +1,46 @@
+name: Deploy Prod
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy-prod:
+    runs-on: ubuntu-latest
+    env:
+      APP_NAME: __APP_NAME__
+      IMAGE_TAG: __APP_NAME__:${{ github.sha }}
+      PROD_HOST: ${{ vars.PROD_HOST }}
+      PROD_USER: ${{ vars.PROD_USER }}
+      PROD_PORT: ${{ vars.PROD_PORT || '22' }}
+      PROD_REMOTE_DIR: ${{ vars.PROD_REMOTE_DIR }}
+      PROD_CONTAINER_NAME: ${{ vars.PROD_CONTAINER_NAME }}
+      PROD_DOCKER_RUN_ARGS: ${{ vars.PROD_DOCKER_RUN_ARGS }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build image
+        run: docker build -t "$IMAGE_TAG" .
+
+      - name: Save image tarball
+        run: docker save "$IMAGE_TAG" -o "${APP_NAME}_${{ github.sha }}.tar"
+
+      - name: Setup SSH key
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.PROD_SSH_KEY }}
+
+      - name: Add prod host to known_hosts
+        run: ssh-keyscan -p "$PROD_PORT" -H "$PROD_HOST" >> ~/.ssh/known_hosts
+
+      - name: Upload image
+        run: scp -P "$PROD_PORT" "${APP_NAME}_${{ github.sha }}.tar" "${PROD_USER}@${PROD_HOST}:${PROD_REMOTE_DIR}/"
+
+      - name: Switch container
+        run: |
+          ssh -p "$PROD_PORT" "${PROD_USER}@${PROD_HOST}" "
+            docker load -i ${PROD_REMOTE_DIR}/${APP_NAME}_${{ github.sha }}.tar &&
+            docker stop ${PROD_CONTAINER_NAME} >/dev/null 2>&1 || true &&
+            docker rm ${PROD_CONTAINER_NAME} >/dev/null 2>&1 || true &&
+            docker run -d --name ${PROD_CONTAINER_NAME} ${PROD_DOCKER_RUN_ARGS} ${IMAGE_TAG}
+          "
