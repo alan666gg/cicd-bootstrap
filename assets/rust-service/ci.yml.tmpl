@@ -1,0 +1,42 @@
+name: __WORKFLOW_NAME__
+
+on:
+  pull_request:
+  push:
+    branches:
+__CI_BRANCH_LINES__
+
+permissions:
+  contents: read
+
+concurrency:
+  group: __CONCURRENCY_GROUP__
+  cancel-in-progress: true
+
+jobs:
+  test-and-build:
+    runs-on: __RUNNER__
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: __SERVICE_PATH__
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+
+__RUST_CACHE_STEPS__
+      - name: Run tests
+        run: __TEST_COMMAND__
+
+      - name: Build
+        run: __BUILD_COMMAND__
+
+      - name: Validate Docker build
+        if: ${{ hashFiles('__DOCKER_CONTEXT__/Dockerfile') != '' }}
+        run: docker build -t __APP_NAME__:ci __DOCKER_CONTEXT__
+__SECURITY_SCAN_JOB__

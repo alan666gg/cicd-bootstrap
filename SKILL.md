@@ -1,6 +1,6 @@
 ---
 name: github-cicd-bootstrap
-description: Use when a user wants to add or standardize GitHub CI/CD for a repository, especially for Go services, Node services, Dockerized apps, or monorepos with one or more sub-services. This skill detects the project type, can generate high-performance Dockerfiles when needed, supports ci-only, docker-ssh, and docker-registry-only strategies, generates GitHub Actions workflows, creates a setup checklist, and validates the resulting CI/CD files.
+description: Use when a user wants to add or standardize GitHub CI/CD for a repository, especially for Go, Node, Python, Java, Rust, Dockerized apps, or monorepos with one or more sub-services. This skill detects the project type, can generate high-performance Dockerfiles when needed, supports ci-only, docker-ssh, and docker-registry-only strategies, generates GitHub Actions workflows, creates a setup checklist, and validates the resulting CI/CD files.
 ---
 
 # GitHub CI/CD Bootstrap
@@ -25,6 +25,15 @@ python3 scripts/bootstrap_repo.py \
   --project-root . \
   --app-name my-service \
   --service-path services/api
+```
+
+Language-specific fast examples:
+
+```bash
+python3 scripts/bootstrap_repo.py --project-root . --generate-dockerfile --deploy-strategy docker-registry-only --force
+python3 scripts/bootstrap_repo.py --project-root . --service-path services/python-api --generate-dockerfile --force
+python3 scripts/bootstrap_repo.py --project-root . --service-path services/java-api --generate-dockerfile --force
+python3 scripts/bootstrap_repo.py --project-root . --service-path services/rust-worker --generate-dockerfile --force
 ```
 
 If the skill is installed into the default Codex skills directory:
@@ -150,6 +159,9 @@ It also supports high-performance Dockerfile generation for:
 
 - `go-service`
 - `node-service`
+- `python-service`
+- `java-service`
+- `rust-service`
 - `static-web`
 
 ## Workflow
@@ -157,7 +169,7 @@ It also supports high-performance Dockerfile generation for:
 ### 1. Detect the repository shape
 
 Run `scripts/detect_project.py` first. It decides:
-- project type: `go-service`, `node-service`, or `docker-service`
+- project type: `go-service`, `node-service`, `python-service`, `java-service`, `rust-service`, or `docker-service`
 - package manager when relevant
 - whether the repo already has a `Dockerfile`
 - candidate service directories when the repo root itself is not directly identifiable
@@ -221,6 +233,8 @@ Validation checks:
 - all generated workflow files exist
 - unresolved placeholders are not left behind
 - each workflow has `name`, `on`, `jobs`, `permissions`, and `concurrency`
+- every job declares `runs-on` and `timeout-minutes`
+- language CI templates keep at least one test step and one build step
 - deploy workflows include `environment`
 - checklist references stay aligned with secrets / variables used by workflows
 - `actionlint` runs automatically when available
@@ -257,6 +271,24 @@ Cover these points in order:
    python3 ~/.agents/skills/github-cicd-bootstrap/scripts/bootstrap_repo.py \
      --project-root . \
      --deploy-mode docker-registry-only \
+     --generate-dockerfile \
+     --force
+   ```
+   - if they already know the language/service path, it is good to show concrete variants:
+   ```bash
+   python3 ~/.agents/skills/github-cicd-bootstrap/scripts/bootstrap_repo.py \
+     --project-root . \
+     --service-path services/python-api \
+     --generate-dockerfile \
+     --force
+   python3 ~/.agents/skills/github-cicd-bootstrap/scripts/bootstrap_repo.py \
+     --project-root . \
+     --service-path services/java-api \
+     --generate-dockerfile \
+     --force
+   python3 ~/.agents/skills/github-cicd-bootstrap/scripts/bootstrap_repo.py \
+     --project-root . \
+     --service-path services/rust-worker \
      --generate-dockerfile \
      --force
    ```
@@ -298,6 +330,9 @@ Cover these points in order:
      - `service_path` / `service_paths`
      - `test_branch` / `test_branches`
      - `image_registry`
+     - `healthcheck_url_test` / `healthcheck_url_prod`
+     - `healthcheck_timeout_seconds`
+     - `rollback_on_failure`
      - `enable_security_scan`
      - `security_scan_blocking`
 
@@ -305,6 +340,9 @@ Cover these points in order:
    - root detection returns `unknown` -> add `--service-path` or `--service-paths`
    - image push fails -> verify registry credentials first
    - Trivy scan occasionally fails -> bootstrap defaults to non-blocking; tighten later if needed
+   - Python repo has no lock file -> `pip` cache may miss more often; this is expected
+   - Gradle wrapper is checked in without execute bit -> workflow now runs `chmod +x ./gradlew`, but the wrapper itself still needs to exist
+   - Rust first compile is slower than later runs because `cargo` dependencies and target cache need warming
 
 8. Natural-language prompts teammates can give AI
    - `用 github-cicd-bootstrap 给这个仓库补一套 GitHub CI/CD，走 docker-registry-only，并在需要时自动生成 Dockerfile。`
@@ -342,6 +380,8 @@ If the user asks for a very short version, give them this one-liner:
   - can perform dockerfile generation -> detect -> render -> checklist -> validate in one run
 - `validate_workflow.py`
   - runs lightweight validation on generated workflows
+- `smoke_test_templates.py`
+  - creates temporary sample repos for Python, Java, Rust, and a mixed monorepo, then runs bootstrap + validate
 
 ### references/
 
@@ -355,10 +395,16 @@ If the user asks for a very short version, give them this one-liner:
 - CI templates by project type:
   - `go-service`
   - `node-service`
+  - `python-service`
+  - `java-service`
+  - `rust-service`
   - `docker-service`
 - Dockerfile templates:
   - `go-service`
   - `node-service`
+  - `python-service`
+  - `java-service`
+  - `rust-service`
   - `static-web`
 - shared deploy templates:
   - `ci-only` placeholders

@@ -45,6 +45,14 @@ Dockerfile generation:
 - `docker_start_command`
 - `binary_name`
 
+Detected project types:
+- `go-service`
+- `node-service`
+- `python-service`
+- `java-service`
+- `rust-service`
+- `docker-service`
+
 ## Example
 
 ```json
@@ -71,6 +79,8 @@ Dockerfile generation:
 }
 ```
 
+`dockerfile_kind` also accepts `python-service`, `java-service`, and `rust-service`.
+
 ## Precedence
 
 1. Explicit CLI flags
@@ -91,3 +101,9 @@ Dockerfile generation:
 - `healthcheck_url_test` and `healthcheck_url_prod` let you define environment-specific HTTP checks.
 - `healthcheck_timeout_seconds` defaults to `40`.
 - `rollback_on_failure` defaults to `true`, so a failed healthcheck attempts to start the previous image again.
+
+## Language Notes
+
+- Python repositories cache best when a lock-like dependency file is present; without one, `pip` caches still work but miss more often.
+- Java repositories should commit the Gradle wrapper when using Gradle; the generated CI will restore execute permission automatically.
+- Rust repositories should prefer checking in `Cargo.lock` for reproducible CI and better cache keys.

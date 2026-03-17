@@ -68,3 +68,6 @@
 - Rollback defaults to enabled for docker-ssh deploys.
 - `docker-registry-only` publishes images only. Another system is expected to deploy them.
 - Teams should prefer `.github/cicd-bootstrap.json` for shared defaults instead of repeating values in every repository.
+- Python services usually want `requirements.txt` or `pyproject.toml` committed so dependency install and cache hints stay stable.
+- Java Gradle services should commit `gradlew` and `gradle/wrapper`; the CI template will repair execute permissions automatically.
+- Rust services compile slower on the first run; keeping `Cargo.lock` checked in helps caching and reproducibility.

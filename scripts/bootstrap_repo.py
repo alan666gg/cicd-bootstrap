@@ -61,13 +61,21 @@ def main() -> int:
     parser.add_argument("--service-path", default="", help="Subdirectory of project root for a single monorepo service")
     parser.add_argument("--service-paths", default="", help="Comma-separated subdirectories for multi-service generation")
     parser.add_argument("--app-name", default="", help="App/service name or prefix for multi-service mode")
-    parser.add_argument("--project-type", default="auto", help="go-service|node-service|docker-service|auto")
+    parser.add_argument(
+        "--project-type",
+        default="auto",
+        help="go-service|node-service|python-service|java-service|rust-service|docker-service|auto",
+    )
     parser.add_argument("--deploy-mode", "--deploy-strategy", dest="deploy_mode", default="auto", help="ci-only|docker-ssh|docker-registry-only|auto")
     parser.add_argument("--generate-dockerfile", action="store_true", help="Generate a high-performance Dockerfile before rendering workflows")
     parser.add_argument("--overwrite-dockerfile", action="store_true", help="Overwrite an existing Dockerfile when generating one")
-    parser.add_argument("--dockerfile-kind", default="auto", help="auto|go-service|node-service|static-web")
-    parser.add_argument("--binary-name", default="", help="Go binary name override for generated Dockerfiles")
-    parser.add_argument("--start-command", default="", help="Node start command override for generated Dockerfiles")
+    parser.add_argument(
+        "--dockerfile-kind",
+        default="auto",
+        help="auto|go-service|node-service|python-service|java-service|rust-service|static-web",
+    )
+    parser.add_argument("--binary-name", default="", help="Go or Rust binary name override for generated Dockerfiles")
+    parser.add_argument("--start-command", default="", help="Runtime command override for generated Dockerfiles")
     parser.add_argument("--build-dir", default="", help="Static-web build output directory override for generated Dockerfiles")
     parser.add_argument("--no-dockerignore", action="store_true", help="Skip generating .dockerignore with generated Dockerfiles")
     parser.add_argument("--test-target", default="", help="Optional test deploy target label")
@@ -103,7 +111,14 @@ def main() -> int:
     app_name_label = str(specs[0]["app_name"]) if len(specs) == 1 else ", ".join(str(spec["app_name"]) for spec in specs)
     deploy_mode_label = str(specs[0]["deploy_mode"]) if len({str(spec["deploy_mode"]) for spec in specs}) == 1 else "mixed"
     test_branch_label = str(specs[0]["test_branches"][0]) if specs else "develop"
-    checklist_content = build_checklist(project_root, service_paths, app_name_label, deploy_mode_label, test_branch_label)
+    checklist_content = build_checklist(
+        project_root,
+        service_paths,
+        app_name_label,
+        deploy_mode_label,
+        test_branch_label,
+        [str(spec["project_type"]) for spec in specs],
+    )
     checklist_file.parent.mkdir(parents=True, exist_ok=True)
     checklist_file.write_text(checklist_content, encoding="utf-8")
 

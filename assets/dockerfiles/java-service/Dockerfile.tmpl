@@ -1,0 +1,22 @@
+# syntax=docker/dockerfile:1.7
+FROM __JAVA_BUILDER_IMAGE__ AS builder
+
+WORKDIR /src
+
+COPY __JAVA_PACKAGE_FILES__ ./
+RUN __JAVA_PREPARE_COMMAND__
+
+COPY . .
+RUN __JAVA_BUILD_COMMAND__
+RUN __JAVA_ARTIFACT_COMMAND__
+
+FROM eclipse-temurin:21-jre-jammy AS runner
+
+RUN useradd --create-home --shell /bin/bash app
+
+WORKDIR /app
+COPY --from=builder /tmp/app.jar /app/app.jar
+
+USER app
+
+ENTRYPOINT ["java", "-jar", "/app/app.jar"]

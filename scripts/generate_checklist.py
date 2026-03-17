@@ -1,13 +1,22 @@
 #!/usr/bin/env python3
 import argparse
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 from render_workflow import read_repo_config, resolve_service_specs
 
 
-def build_checklist(project_root: Path, service_paths: List[str], app_name: str, deploy_mode: str, test_branch: str) -> str:
+def build_checklist(
+    project_root: Path,
+    service_paths: List[str],
+    app_name: str,
+    deploy_mode: str,
+    test_branch: str,
+    service_types: Optional[List[str]] = None,
+) -> str:
     service_lines = "\n".join(f"  - `{service_path}`" for service_path in service_paths)
+    normalized_service_types = sorted({service_type for service_type in (service_types or []) if service_type})
+    service_type_label = ", ".join(f"`{service_type}`" for service_type in normalized_service_types) if normalized_service_types else "`unknown`"
     lines = [
         "# GitHub CI/CD Setup Checklist",
         "",
@@ -15,6 +24,7 @@ def build_checklist(project_root: Path, service_paths: List[str], app_name: str,
         f"- 服务数量：`{len(service_paths)}`",
         "- 服务路径：",
         service_lines,
+        f"- 服务类型：{service_type_label}",
         f"- 应用名称：`{app_name}`",
         f"- 部署策略：`{deploy_mode}`",
         f"- 测试分支：`{test_branch}`",
@@ -106,6 +116,38 @@ def build_checklist(project_root: Path, service_paths: List[str], app_name: str,
             "- `test_environment`",
             "- `prod_environment`",
             "",
+            "## 语言相关提示",
+            "",
+        ]
+    )
+
+    if "python-service" in normalized_service_types:
+        lines.extend(
+            [
+                "- Python：建议仓库至少保留 `requirements.txt` 或 `pyproject.toml`，没有 lock 文件时 `pip` 缓存命中率会偏低。",
+                "- Python：CI 默认会补装 `pytest`，如果测试依赖比较特殊，优先写进项目依赖文件里。",
+            ]
+        )
+    if "java-service" in normalized_service_types:
+        lines.extend(
+            [
+                "- Java：Gradle 项目建议提交 `gradlew` 和 `gradle/wrapper`，模板会自动执行一次 `chmod +x ./gradlew`。",
+                "- Java：Maven / Gradle 首次下载依赖会偏慢，wrapper 文件和缓存键不要随手删掉。",
+            ]
+        )
+    if "rust-service" in normalized_service_types:
+        lines.extend(
+            [
+                "- Rust：首次 `cargo build` 往往最慢，后续依赖缓存稳定后会明显改善。",
+                "- Rust：建议提交 `Cargo.lock`，这样 CI 缓存和可重复构建都更稳。",
+            ]
+        )
+    if not normalized_service_types:
+        lines.append("- 混合语言仓库建议显式传 `--service-path` 或 `--service-paths`，避免根目录识别成 `unknown`。")
+
+    lines.extend(
+        [
+            "",
             "## 使用说明",
             "",
         ]
@@ -174,7 +216,11 @@ def main() -> int:
     parser.add_argument("--app-name", default="", help="Override app name")
     parser.add_argument("--deploy-mode", "--deploy-strategy", dest="deploy_mode", default="auto", help="ci-only|docker-ssh|docker-registry-only|auto")
     parser.add_argument("--test-branch", default="", help="Test branch name")
-    parser.add_argument("--project-type", default="auto", help="go-service|node-service|docker-service|auto")
+    parser.add_argument(
+        "--project-type",
+        default="auto",
+        help="go-service|node-service|python-service|java-service|rust-service|docker-service|auto",
+    )
     parser.add_argument("--test-target", default="", help="Optional test deploy target label")
     parser.add_argument("--prod-target", default="", help="Optional production deploy target label")
     args = parser.parse_args()
@@ -187,7 +233,8 @@ def main() -> int:
     app_name = str(specs[0]["app_name"]) if len(specs) == 1 else ", ".join(str(spec["app_name"]) for spec in specs)
     deploy_mode = str(specs[0]["deploy_mode"]) if len({str(spec["deploy_mode"]) for spec in specs}) == 1 else "mixed"
     test_branch = str(specs[0]["test_branches"][0]) if specs else "develop"
-    content = build_checklist(project_root, service_paths, app_name, deploy_mode, test_branch)
+    service_types = [str(spec["project_type"]) for spec in specs]
+    content = build_checklist(project_root, service_paths, app_name, deploy_mode, test_branch, service_types)
 
     output_file = Path(args.output_file).resolve()
     output_file.parent.mkdir(parents=True, exist_ok=True)

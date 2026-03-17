@@ -1,0 +1,22 @@
+# syntax=docker/dockerfile:1.7
+FROM rust:1.85-bookworm AS builder
+
+WORKDIR /src
+
+COPY __RUST_MANIFEST_FILES__ ./
+RUN mkdir -p src && printf 'fn main() { println!("build cache warmup"); }\n' > src/main.rs && cargo build --release || true
+
+COPY . .
+RUN __RUST_BUILD_COMMAND__
+
+FROM debian:bookworm-slim AS runner
+
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/* && \
+    useradd --create-home --shell /bin/bash app
+
+WORKDIR /app
+COPY --from=builder /src/target/release/__RUST_BINARY_NAME__ /usr/local/bin/__RUST_BINARY_NAME__
+
+USER app
+
+ENTRYPOINT ["/usr/local/bin/__RUST_BINARY_NAME__"]

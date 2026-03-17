@@ -1,0 +1,29 @@
+# syntax=docker/dockerfile:1.7
+FROM python:3.12-slim AS builder
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+WORKDIR /app
+
+COPY __PYTHON_PACKAGE_FILES__ ./
+RUN __PYTHON_INSTALL_COMMAND__
+
+COPY . .
+RUN __PYTHON_POST_INSTALL_COMMAND__
+
+FROM python:3.12-slim AS runner
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PATH="/opt/venv/bin:$PATH"
+
+RUN useradd --create-home --shell /bin/bash app
+
+WORKDIR /app
+COPY --from=builder /opt/venv /opt/venv
+COPY --from=builder /app /app
+
+USER app
+
+CMD __PYTHON_START_COMMAND__

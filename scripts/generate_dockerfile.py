@@ -3,7 +3,7 @@ import argparse
 import json
 import shlex
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List
 
 from detect_project import detect_project
 from render_workflow import parse_service_paths, read_repo_config
@@ -25,15 +25,6 @@ def write_file(path: Path, content: str) -> None:
 
 def normalize(value, fallback: str) -> str:
     return value.strip() if value and value.strip() else fallback
-
-
-def bool_from_config(repo_config: Dict[str, object], key: str, default: bool) -> bool:
-    value = repo_config.get(key, default)
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, str):
-        return value.strip().lower() in {"1", "true", "yes", "on"}
-    return bool(value)
 
 
 def read_package_json(service_root: Path) -> Dict[str, object]:
@@ -63,7 +54,6 @@ def detect_build_dir(service_root: Path, package_json: Dict[str, object], config
 
 
 def infer_dockerfile_kind(
-    service_root: Path,
     detected: Dict[str, object],
     package_json: Dict[str, object],
     configured_kind: str,
@@ -92,12 +82,31 @@ def infer_dockerfile_kind(
         if "build" in scripts and ("start" not in scripts) and any(marker in deps for marker in frontend_markers):
             return "static-web"
         return "node-service"
+    if project_type == "python-service":
+        return "python-service"
+    if project_type == "java-service":
+        return "java-service"
+    if project_type == "rust-service":
+        return "rust-service"
     return "docker-service"
 
 
-def detect_start_command(service_root: Path, package_manager: str, package_json: Dict[str, object], configured: str) -> str:
+def detect_start_command(
+    service_root: Path,
+    detected: Dict[str, object],
+    package_manager: str,
+    package_json: Dict[str, object],
+    configured: str,
+) -> str:
     if configured.strip():
         return json.dumps(shlex.split(configured.strip()))
+    project_type = str(detected.get("project_type") or "")
+    if project_type == "python-service":
+        for candidate in ("main.py", "app.py", "run.py", "src/main.py"):
+            if (service_root / candidate).exists():
+                return json.dumps(["python", candidate])
+        module_name = normalize(str(detected.get("app_name") or service_root.name), "app").replace("-", "_")
+        return json.dumps(["python", "-m", module_name])
     scripts = package_json.get("scripts") or {}
     pm = package_manager_prefix(package_manager)
     if "start" in scripts:
@@ -149,6 +158,90 @@ def build_command(detected: Dict[str, object]) -> str:
     return str(detected.get("build_command") or "npm run build --if-present")
 
 
+def python_package_files(detected: Dict[str, object]) -> str:
+    files = [str(name) for name in detected.get("python_dependency_files") or []]
+    if not files:
+        return "requirements.txt"
+    return " ".join(files)
+
+
+def python_install_command(detected: Dict[str, object]) -> str:
+    commands = [
+        "python -m venv /opt/venv",
+        "/opt/venv/bin/pip install --upgrade pip",
+    ]
+    if "requirements.txt" in set(detected.get("python_dependency_files") or []):
+        commands.append("/opt/venv/bin/pip install -r requirements.txt")
+    return " && ".join(commands)
+
+
+def python_post_install_command(detected: Dict[str, object]) -> str:
+    if "pyproject.toml" in set(detected.get("python_dependency_files") or []):
+        return "/opt/venv/bin/pip install ."
+    return "true"
+
+
+def java_build_tool(detected: Dict[str, object]) -> str:
+    return str(detected.get("java_build_tool") or "maven")
+
+
+def java_builder_image(detected: Dict[str, object]) -> str:
+    if java_build_tool(detected) == "gradle":
+        return "gradle:8.11-jdk21"
+    return "maven:3.9.9-eclipse-temurin-21"
+
+
+def java_package_files(service_root: Path, detected: Dict[str, object]) -> str:
+    files: List[str] = []
+    build_tool = java_build_tool(detected)
+    if build_tool == "maven":
+        if (service_root / "pom.xml").exists():
+            files.append("pom.xml")
+        if (service_root / ".mvn").exists():
+            files.append(".mvn")
+        if (service_root / "mvnw").exists():
+            files.append("mvnw")
+    else:
+        for name in ("build.gradle", "build.gradle.kts", "settings.gradle", "settings.gradle.kts", "gradle.properties", "gradlew"):
+            if (service_root / name).exists():
+                files.append(name)
+        if (service_root / "gradle").exists():
+            files.append("gradle")
+    return " ".join(files) or "."
+
+
+def java_prepare_command(service_root: Path, detected: Dict[str, object]) -> str:
+    build_tool = java_build_tool(detected)
+    if build_tool == "gradle":
+        if (service_root / "gradlew").exists():
+            return "chmod +x ./gradlew && ./gradlew help --no-daemon || true"
+        return "gradle help --no-daemon || true"
+    return "mvn -B -q -DskipTests dependency:go-offline || true"
+
+
+def java_artifact_command(detected: Dict[str, object]) -> str:
+    artifact_dir = "build/libs" if java_build_tool(detected) == "gradle" else "target"
+    return (
+        "set -eux; "
+        f"artifact=$(find {artifact_dir} -maxdepth 1 -type f -name '*.jar' "
+        "! -name '*-sources.jar' ! -name '*-javadoc.jar' | head -n 1); "
+        'test -n "$artifact"; cp "$artifact" /tmp/app.jar'
+    )
+
+
+def rust_manifest_files(service_root: Path) -> str:
+    files = ["Cargo.toml"]
+    if (service_root / "Cargo.lock").exists():
+        files.append("Cargo.lock")
+    return " ".join(files)
+
+
+def rust_binary_name(detected: Dict[str, object], service_root: Path, configured: str) -> str:
+    if configured.strip():
+        return configured.strip()
+    return normalize(str(detected.get("rust_binary_name") or service_root.name), service_root.name)
+
+
 def go_sum_copy(service_root: Path) -> str:
     return "COPY go.sum ./\n" if (service_root / "go.sum").exists() else ""
 
@@ -156,6 +249,12 @@ def go_sum_copy(service_root: Path) -> str:
 def dockerignore_template_path(kind: str) -> Path:
     if kind == "go-service":
         return DOCKERFILE_ASSETS_DIR / "go.dockerignore.tmpl"
+    if kind == "python-service":
+        return DOCKERFILE_ASSETS_DIR / "python-service" / "dockerignore.tmpl"
+    if kind == "java-service":
+        return DOCKERFILE_ASSETS_DIR / "java-service" / "dockerignore.tmpl"
+    if kind == "rust-service":
+        return DOCKERFILE_ASSETS_DIR / "rust-service" / "dockerignore.tmpl"
     if kind == "static-web":
         return DOCKERFILE_ASSETS_DIR / "static-web.dockerignore.tmpl"
     return DOCKERFILE_ASSETS_DIR / "node.dockerignore.tmpl"
@@ -166,6 +265,12 @@ def dockerfile_template_path(kind: str) -> Path:
         return DOCKERFILE_ASSETS_DIR / "go.Dockerfile.tmpl"
     if kind == "node-service":
         return DOCKERFILE_ASSETS_DIR / "node.Dockerfile.tmpl"
+    if kind == "python-service":
+        return DOCKERFILE_ASSETS_DIR / "python-service" / "Dockerfile.tmpl"
+    if kind == "java-service":
+        return DOCKERFILE_ASSETS_DIR / "java-service" / "Dockerfile.tmpl"
+    if kind == "rust-service":
+        return DOCKERFILE_ASSETS_DIR / "rust-service" / "Dockerfile.tmpl"
     if kind == "static-web":
         return DOCKERFILE_ASSETS_DIR / "static-web.Dockerfile.tmpl"
     raise ValueError(f"unsupported dockerfile kind: {kind}")
@@ -188,7 +293,6 @@ def generate_for_service(
     package_json = read_package_json(service_root)
     package_manager = str(detected.get("package_manager") or "npm")
     kind = infer_dockerfile_kind(
-        service_root,
         detected,
         package_json,
         str(repo_config.get("dockerfile_kind", "auto")),
@@ -211,8 +315,36 @@ def generate_for_service(
             "INSTALL_COMMAND": install_command(service_root, package_manager),
             "BUILD_COMMAND": build_command(detected),
             "PRUNE_COMMAND": prune_command(package_manager),
-            "START_COMMAND": detect_start_command(service_root, package_manager, package_json, str(repo_config.get("docker_start_command", args.start_command))),
+            "START_COMMAND": detect_start_command(
+                service_root,
+                detected,
+                package_manager,
+                package_json,
+                str(repo_config.get("docker_start_command", args.start_command)),
+            ),
             "BUILD_DIR": detect_build_dir(service_root, package_json, str(repo_config.get("docker_build_dir", args.build_dir))),
+            "PYTHON_PACKAGE_FILES": python_package_files(detected),
+            "PYTHON_INSTALL_COMMAND": python_install_command(detected),
+            "PYTHON_POST_INSTALL_COMMAND": python_post_install_command(detected),
+            "PYTHON_START_COMMAND": detect_start_command(
+                service_root,
+                detected,
+                package_manager,
+                package_json,
+                str(repo_config.get("docker_start_command", args.start_command)),
+            ),
+            "JAVA_BUILDER_IMAGE": java_builder_image(detected),
+            "JAVA_PACKAGE_FILES": java_package_files(service_root, detected),
+            "JAVA_PREPARE_COMMAND": java_prepare_command(service_root, detected),
+            "JAVA_BUILD_COMMAND": build_command(detected),
+            "JAVA_ARTIFACT_COMMAND": java_artifact_command(detected),
+            "RUST_MANIFEST_FILES": rust_manifest_files(service_root),
+            "RUST_BUILD_COMMAND": build_command(detected),
+            "RUST_BINARY_NAME": rust_binary_name(
+                detected,
+                service_root,
+                str(repo_config.get("binary_name", args.binary_name)),
+            ),
         }
         dockerfile_template = load_template(dockerfile_template_path(kind))
         write_file(dockerfile_path, render_template(dockerfile_template, replacements))
@@ -245,9 +377,13 @@ def main() -> int:
     parser.add_argument("--project-root", default=".", help="Repository root")
     parser.add_argument("--service-path", default="", help="Subdirectory of project root for a single monorepo service")
     parser.add_argument("--service-paths", default="", help="Comma-separated subdirectories for multi-service generation")
-    parser.add_argument("--dockerfile-kind", default="auto", help="auto|go-service|node-service|static-web")
-    parser.add_argument("--binary-name", default="", help="Go binary name override")
-    parser.add_argument("--start-command", default="", help="Node start command override, for example 'npm run start'")
+    parser.add_argument(
+        "--dockerfile-kind",
+        default="auto",
+        help="auto|go-service|node-service|python-service|java-service|rust-service|static-web",
+    )
+    parser.add_argument("--binary-name", default="", help="Go or Rust binary name override")
+    parser.add_argument("--start-command", default="", help="Runtime command override, for example 'npm run start' or 'python main.py'")
     parser.add_argument("--build-dir", default="", help="Static-web build output directory override")
     parser.add_argument("--overwrite-dockerfile", action="store_true", help="Overwrite an existing Dockerfile")
     parser.add_argument("--no-dockerignore", action="store_true", help="Skip generating .dockerignore")

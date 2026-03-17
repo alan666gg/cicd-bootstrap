@@ -11,6 +11,9 @@
 当前支持：
 - `go-service`
 - `node-service`
+- `python-service`
+- `java-service`
+- `rust-service`
 - `docker-service`
 
 部署模式：
@@ -21,6 +24,9 @@
 Dockerfile 生成：
 - `go-service`
 - `node-service`
+- `python-service`
+- `java-service`
+- `rust-service`
 - `static-web`
 
 ## 安装
@@ -108,7 +114,15 @@ python3 scripts/bootstrap_repo.py \
   --force
 ```
 
-### 4. Monorepo 批量生成
+### 4. Python / Java / Rust 服务
+
+```bash
+python3 scripts/bootstrap_repo.py --project-root . --service-path services/python-api --generate-dockerfile --force
+python3 scripts/bootstrap_repo.py --project-root . --service-path services/java-api --generate-dockerfile --force
+python3 scripts/bootstrap_repo.py --project-root . --service-path services/rust-worker --generate-dockerfile --force
+```
+
+### 5. Monorepo 批量生成
 
 ```bash
 python3 scripts/bootstrap_repo.py \
@@ -118,7 +132,7 @@ python3 scripts/bootstrap_repo.py \
   --force
 ```
 
-### 5. 只生成高性能 Dockerfile
+### 6. 只生成高性能 Dockerfile
 
 ```bash
 python3 scripts/generate_dockerfile.py \
@@ -134,7 +148,15 @@ python3 scripts/generate_dockerfile.py \
   --dockerfile-kind static-web
 ```
 
-### 6. 只做识别，不生成文件
+也可以显式指定多语言模板：
+
+```bash
+python3 scripts/generate_dockerfile.py --project-root . --dockerfile-kind python-service
+python3 scripts/generate_dockerfile.py --project-root . --dockerfile-kind java-service
+python3 scripts/generate_dockerfile.py --project-root . --dockerfile-kind rust-service
+```
+
+### 7. 只做识别，不生成文件
 
 ```bash
 python3 scripts/detect_project.py --project-root .
@@ -257,6 +279,25 @@ python3 scripts/bootstrap_repo.py --project-root . --force
 - GitHub environment 名称
 
 这样同事只需要运行 bootstrap，不用每次再手敲一堆参数。
+
+## 语言相关提醒
+
+- Python：建议至少保留 `requirements.txt` 或 `pyproject.toml`，没有 lock 文件时 `pip` cache miss 会更多。
+- Java：Gradle 项目建议把 `gradlew` 和 `gradle/wrapper` 一起提交；模板会自动补一次 `chmod +x ./gradlew`。
+- Rust：首次 `cargo build` 会明显更慢，后续依赖缓存热起来后会稳定很多。
+
+## Smoke Test
+
+仓库内置了一个最小 smoke test，用来验证多语言模板没有回退：
+
+```bash
+python3 scripts/smoke_test_templates.py
+```
+
+它会自动创建 Python / Java / Rust 单仓样例，以及一个混合语言 monorepo，然后执行：
+- `detect_project.py`
+- `bootstrap_repo.py`
+- `validate_workflow.py`
 
 ## 自动生成高性能 Dockerfile
 

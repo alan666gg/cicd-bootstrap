@@ -16,12 +16,21 @@ except ImportError:  # pragma: no cover
 PLACEHOLDER_RE = re.compile(r"__[A-Z0-9_]+__")
 SECRET_REF_RE = re.compile(r"secrets\.([A-Z0-9_]+)")
 VAR_REF_RE = re.compile(r"vars\.([A-Z0-9_]+)")
+TEST_STEP_RE = re.compile(r"\b(test|pytest)\b")
+BUILD_STEP_RE = re.compile(r"\b(build|compile|package)\b")
 
 
 def find_checklist(workflow_file: Path, explicit_checklist: Path = None) -> Path:
     if explicit_checklist:
         return explicit_checklist
     return workflow_file.parent.parent / "cicd-bootstrap-checklist.md"
+
+
+def step_text(step: Dict[str, object]) -> str:
+    name = str(step.get("name") or "")
+    run = str(step.get("run") or "")
+    uses = str(step.get("uses") or "")
+    return " ".join((name, run, uses)).lower()
 
 
 def validate_file(path: Path, checklist_file: Path = None) -> List[str]:
@@ -75,6 +84,16 @@ def validate_file(path: Path, checklist_file: Path = None) -> List[str]:
                     errors.append(f"{path.name}: job '{job_name}' missing 'timeout-minutes'")
                 if path.name.startswith("deploy-") and "environment" not in job:
                     errors.append(f"{path.name}: deploy job '{job_name}' missing 'environment'")
+                if path.name.startswith("ci") and job_name == "test-and-build":
+                    steps = job.get("steps")
+                    if not isinstance(steps, list):
+                        errors.append(f"{path.name}: job '{job_name}' missing 'steps'")
+                        continue
+                    step_texts = [step_text(step) for step in steps if isinstance(step, dict)]
+                    if not any(TEST_STEP_RE.search(text) for text in step_texts):
+                        errors.append(f"{path.name}: job '{job_name}' should include at least one test step")
+                    if not any(BUILD_STEP_RE.search(text) for text in step_texts):
+                        errors.append(f"{path.name}: job '{job_name}' should include at least one build step")
 
     checklist_path = find_checklist(path, checklist_file)
     if checklist_path.exists():

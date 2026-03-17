@@ -34,6 +34,12 @@ def choose_ci_template(project_type: str) -> Path:
         return ASSETS_DIR / "go-service" / "ci.yml.tmpl"
     if project_type == "node-service":
         return ASSETS_DIR / "node-service" / "ci.yml.tmpl"
+    if project_type == "python-service":
+        return ASSETS_DIR / "python-service" / "ci.yml.tmpl"
+    if project_type == "java-service":
+        return ASSETS_DIR / "java-service" / "ci.yml.tmpl"
+    if project_type == "rust-service":
+        return ASSETS_DIR / "rust-service" / "ci.yml.tmpl"
     if project_type == "docker-service":
         return ASSETS_DIR / "docker-service" / "ci.yml.tmpl"
     raise ValueError(f"unsupported project type: {project_type}")
@@ -159,6 +165,10 @@ def lockfile_for_package_manager(package_manager: str) -> str:
     return "package-lock.json"
 
 
+def repo_relative_path(service_path: str, filename: str) -> str:
+    return filename if service_path == "." else f"{service_path}/{filename}"
+
+
 def build_go_cache_steps(enable_cache: bool) -> str:
     if not enable_cache:
         return ""
@@ -183,6 +193,49 @@ def build_node_cache_block(enable_cache: bool, package_manager: str, service_pat
         dependency_path = f"{service_path}/{dependency_path}"
     return f"""          cache: {package_manager or 'npm'}
           cache-dependency-path: {dependency_path}
+"""
+
+
+def build_python_cache_block(enable_cache: bool, dependency_files: List[str], service_path: str) -> str:
+    if not enable_cache:
+        return ""
+    lines = ["          cache: pip"]
+    if dependency_files:
+        lines.append("          cache-dependency-path: |")
+        for filename in dependency_files:
+            lines.append(f"            {repo_relative_path(service_path, filename)}")
+    return "\n".join(lines) + "\n"
+
+
+def build_java_wrapper_step(has_gradle_wrapper: bool) -> str:
+    if not has_gradle_wrapper:
+        return ""
+    return """      - name: Ensure Gradle wrapper is executable
+        run: chmod +x ./gradlew
+
+"""
+
+
+def build_rust_cache_steps(enable_cache: bool, service_path: str) -> str:
+    if not enable_cache:
+        return ""
+    target_path = "target" if service_path == "." else f"{service_path}/target"
+    if service_path == ".":
+        hash_args = "'Cargo.lock', '**/Cargo.lock'"
+    else:
+        hash_args = f"'Cargo.lock', '{service_path}/Cargo.lock'"
+    return f"""      - name: Cache Cargo dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            {target_path}
+          key: ${{{{ runner.os }}}}-cargo-${{{{ hashFiles({hash_args}) }}}}
+          restore-keys: |
+            ${{{{ runner.os }}}}-cargo-
+
 """
 
 
@@ -367,6 +420,9 @@ def build_replacements(spec: Dict[str, object], workflow_kind: str) -> Dict[str,
     service_path = str(spec["service_path"])
     go_cache_steps = build_go_cache_steps(bool(spec["enable_cache"]))
     node_cache_block = build_node_cache_block(bool(spec["enable_cache"]), str(detected.get("package_manager") or "npm"), service_path)
+    python_cache_block = build_python_cache_block(bool(spec["enable_cache"]), list(detected.get("python_dependency_files") or []), service_path)
+    java_wrapper_step = build_java_wrapper_step(bool(detected.get("has_gradle_wrapper")))
+    rust_cache_steps = build_rust_cache_steps(bool(spec["enable_cache"]), service_path)
     build_job_name = "docker-build" if spec["project_type"] == "docker-service" else "test-and-build"
     security_scan_job = build_security_scan_job(
         bool(spec["enable_security_scan"]),
@@ -401,6 +457,10 @@ def build_replacements(spec: Dict[str, object], workflow_kind: str) -> Dict[str,
         "ROLLBACK_ON_FAILURE": str(spec["rollback_on_failure"]),
         "GO_CACHE_STEPS": go_cache_steps,
         "NODE_CACHE_BLOCK": node_cache_block,
+        "PYTHON_CACHE_BLOCK": python_cache_block,
+        "JAVA_CACHE": str(detected.get("java_build_tool") or "maven"),
+        "JAVA_WRAPPER_STEP": java_wrapper_step,
+        "RUST_CACHE_STEPS": rust_cache_steps,
         "SECURITY_SCAN_JOB": security_scan_job,
         "TEST_COMMAND": str(detected["test_command"]),
         "BUILD_COMMAND": str(detected["build_command"]),
@@ -453,7 +513,11 @@ def main() -> int:
     parser.add_argument("--service-path", default="", help="Subdirectory of project root for a single monorepo service")
     parser.add_argument("--service-paths", default="", help="Comma-separated subdirectories for multi-service generation")
     parser.add_argument("--output-dir", default=".github/workflows", help="Workflow output directory")
-    parser.add_argument("--project-type", default="auto", help="go-service|node-service|docker-service|auto")
+    parser.add_argument(
+        "--project-type",
+        default="auto",
+        help="go-service|node-service|python-service|java-service|rust-service|docker-service|auto",
+    )
     parser.add_argument("--deploy-mode", "--deploy-strategy", dest="deploy_mode", default="auto", help="ci-only|docker-ssh|docker-registry-only|auto")
     parser.add_argument("--app-name", default="", help="Workflow app/service name")
     parser.add_argument("--test-target", default="", help="Optional test deploy target label")
