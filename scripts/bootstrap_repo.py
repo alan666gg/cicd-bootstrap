@@ -118,6 +118,9 @@ def main() -> int:
         deploy_mode_label,
         test_branch_label,
         [str(spec["project_type"]) for spec in specs],
+        list(repo_config.get("dependency_checks_test", [])),
+        list(repo_config.get("dependency_checks_prod", [])),
+        bool(repo_config.get("dependency_checks_blocking", False)),
     )
     checklist_file.parent.mkdir(parents=True, exist_ok=True)
     checklist_file.write_text(checklist_content, encoding="utf-8")

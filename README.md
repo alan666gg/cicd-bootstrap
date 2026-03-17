@@ -292,6 +292,9 @@ python3 scripts/bootstrap_repo.py --project-root . --force
 - `docker-ssh` workflow 会自动创建远端目录，并把切换逻辑下沉到 `scripts/remote_deploy.sh`
 - 如果配置了 healthcheck URL，部署成功前会自动探活，失败时默认回滚到旧镜像
 - `remote_image_retention` 默认保留最近 3 个镜像，避免远端历史镜像越积越多
+- 如果服务依赖 Redis / MySQL / MQ，可以在 repo config 里声明 `dependency_checks_test` / `dependency_checks_prod`
+- 支持 `tcp://host:port`、`http(s)://...`、`cmd:<shell command>` 三种依赖检查格式
+- `dependency_checks_blocking=false` 时默认只提醒不阻断；切成 `true` 后依赖不通会直接阻止部署
 - skill 仓库自己也带了 `.github/workflows/ci.yml`，会跑 smoke test 和 snapshot test
 
 ## deploy strategy 说明

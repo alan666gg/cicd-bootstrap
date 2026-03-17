@@ -32,6 +32,9 @@ Organization defaults:
 - `healthcheck_timeout_seconds`
 - `rollback_on_failure`
 - `remote_image_retention`
+- `dependency_checks_test`
+- `dependency_checks_prod`
+- `dependency_checks_blocking`
 - `runner`
 - `default_shell`
 - `default_job_timeout_minutes`
@@ -76,6 +79,9 @@ Detected project types:
   "healthcheck_timeout_seconds": 40,
   "rollback_on_failure": true,
   "remote_image_retention": 3,
+  "dependency_checks_test": ["tcp://127.0.0.1:6379", "cmd:docker ps --format '{{.Names}}' | grep -q '^redis$'"],
+  "dependency_checks_prod": ["tcp://10.0.0.12:6379", "http://10.0.0.20:8080/readyz"],
+  "dependency_checks_blocking": false,
   "runner": "ubuntu-latest",
   "default_shell": "bash --noprofile --norc -euo pipefail {0}",
   "default_job_timeout_minutes": 20,
@@ -123,6 +129,12 @@ Detected project types:
 - `healthcheck_timeout_seconds` defaults to `40`.
 - `rollback_on_failure` defaults to `true`, so a failed healthcheck attempts to start the previous image again.
 - `remote_image_retention` defaults to `3`, so old images are pruned after successful deploys.
+- `dependency_checks_test` and `dependency_checks_prod` let you declare runtime dependency checks before deploy.
+- Supported dependency check formats are:
+  - `tcp://host:port`
+  - `http://host/path` or `https://host/path`
+  - `cmd:<shell command>`
+- `dependency_checks_blocking` defaults to `false`, so failed checks raise warnings and reminders before the team decides to make them blocking.
 
 ## Language Notes
 

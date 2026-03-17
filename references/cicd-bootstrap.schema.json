@@ -94,6 +94,24 @@
       "minimum": 0,
       "default": 3
     },
+    "dependency_checks_test": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": []
+    },
+    "dependency_checks_prod": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": []
+    },
+    "dependency_checks_blocking": {
+      "type": "boolean",
+      "default": false
+    },
     "runner": {
       "type": "string"
     },

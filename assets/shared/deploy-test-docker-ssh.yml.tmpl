@@ -61,6 +61,8 @@ jobs:
       - name: Upload remote deploy script
         run: scp -P "$TEST_PORT" "__REMOTE_DEPLOY_SCRIPT_PATH__" "${TEST_USER}@${TEST_HOST}:${TEST_REMOTE_DIR}/remote_deploy.sh"
 
+__DEPENDENCY_UPLOAD_STEP__
+__DEPENDENCY_CHECK_STEP__
       - name: Switch container
         run: |
           ssh -p "$TEST_PORT" "${TEST_USER}@${TEST_HOST}" \

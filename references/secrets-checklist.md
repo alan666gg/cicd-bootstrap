@@ -50,6 +50,9 @@
 - `default_job_timeout_minutes`
 - `deploy_job_timeout_minutes`
 - `remote_image_retention`
+- `dependency_checks_test`
+- `dependency_checks_prod`
+- `dependency_checks_blocking`
 
 ### Optional GitHub Variables
 - `IMAGE_REGISTRY`
@@ -78,6 +81,7 @@
 - `docker-registry-only` publishes images only. Another system is expected to deploy them.
 - Teams should prefer `.github/cicd-bootstrap.json` for shared defaults instead of repeating values in every repository.
 - `scripts/apply_github_config.py` can batch-apply variables and secrets with `--dry-run` and `--mode skip|upsert`.
+- `dependency_checks_test` / `dependency_checks_prod` are useful for Redis, MySQL, MQ, and internal HTTP dependency readiness reminders.
 - Python services usually want `requirements.txt` or `pyproject.toml` committed so dependency install and cache hints stay stable.
 - Java Gradle services should commit `gradlew` and `gradle/wrapper`; the CI template will repair execute permissions automatically.
 - Rust services compile slower on the first run; keeping `Cargo.lock` checked in helps caching and reproducibility.

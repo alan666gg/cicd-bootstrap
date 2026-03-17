@@ -53,6 +53,7 @@ jobs:
           username: ${{ secrets.REGISTRY_USERNAME }}
           password: ${{ secrets.REGISTRY_PASSWORD }}
 
+__DEPENDENCY_REMINDER_STEP__
       - name: Build and push production image
         uses: __ACTION_DOCKER_BUILD_PUSH__
         with:

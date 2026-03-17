@@ -131,14 +131,14 @@ def detect_project_type(project_root: Path, service_path: str = "") -> str:
     return str(result["project_type"])
 
 
-def bootstrap_and_validate(project_root: Path, service_paths: str = "") -> Dict[str, object]:
+def bootstrap_and_validate(project_root: Path, service_paths: str = "", deploy_mode: str = "docker-registry-only") -> Dict[str, object]:
     bootstrap_args = [
         "python3",
         str(SCRIPT_DIR / "bootstrap_repo.py"),
         "--project-root",
         str(project_root),
         "--deploy-mode",
-        "docker-registry-only",
+        deploy_mode,
         "--generate-dockerfile",
         "--force",
     ]
@@ -241,6 +241,54 @@ def main() -> int:
                 "detected_type": monorepo_specs,
                 "workflow_files": workflow_names,
                 "errors": monorepo_smoke["validate"]["results"],
+            }
+        )
+
+        dependency_root = temp_root / "dependency-checks"
+        create_go_project(dependency_root)
+        write_file(
+            dependency_root / ".github" / "cicd-bootstrap.json",
+            json.dumps(
+                {
+                    "deploy_strategy": "docker-ssh",
+                    "dependency_checks_test": [
+                        "tcp://127.0.0.1:6379",
+                        "cmd:docker ps --format '{{.Names}}' | grep -q '^redis$'",
+                    ],
+                    "dependency_checks_prod": [
+                        "tcp://10.0.0.12:6379",
+                        "http://10.0.0.20:8080/readyz",
+                    ],
+                    "dependency_checks_blocking": False,
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+            + "\n",
+        )
+        dependency_smoke = bootstrap_and_validate(dependency_root, deploy_mode="auto")
+        assert_contains(
+            dependency_root / ".github" / "workflows" / "deploy-test.yml",
+            [
+                "Upload dependency check script",
+                "Upload dependency check definitions",
+                "Check runtime dependencies",
+                "dependency_checks.txt",
+            ],
+        )
+        assert_contains(
+            dependency_root / ".github" / "cicd-bootstrap-checklist.md",
+            ["dependency_checks_test", "tcp://127.0.0.1:6379", "dependency_checks_blocking"],
+        )
+        support_files = dependency_smoke["bootstrap"].get("support_files") or []
+        if not any(str(path).endswith("scripts/check_dependencies.sh") for path in support_files):
+            raise AssertionError("dependency-checks: expected generated scripts/check_dependencies.sh support file")
+        results.append(
+            {
+                "scenario": "dependency-checks",
+                "detected_type": "go-service",
+                "workflow_files": sorted(path.name for path in (dependency_root / ".github" / "workflows").glob("*.yml")),
+                "errors": dependency_smoke["validate"]["results"],
             }
         )
     except Exception as exc:

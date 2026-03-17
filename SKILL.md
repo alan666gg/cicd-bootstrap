@@ -137,6 +137,7 @@ Bootstrap output keeps security scans enabled but defaults them to non-blocking 
 `action_pin_mode` defaults to `tag`; when set to `sha`, the repo config must provide `pinned_actions` for the actions actually used by the rendered workflow.
 Generated jobs now default to `bash --noprofile --norc -euo pipefail {0}`, keep required permissions/concurrency/timeout fields, and can be constrained by an `allow_actions` whitelist.
 For `docker-ssh`, the generated workflows create the remote directory automatically, upload a generated `scripts/remote_deploy.sh`, run an optional healthcheck, roll back to the previous image by default when the new container fails healthchecks, and prune older images using `remote_image_retention`.
+When a service depends on Redis, MySQL, MQ, or internal HTTP dependencies, prefer declaring `dependency_checks_test` and `dependency_checks_prod` in repo config. Supported formats are `tcp://host:port`, `http(s)://...`, and `cmd:<shell command>`. These checks default to reminder mode unless `dependency_checks_blocking` is set to `true`.
 
 When this file exists, `bootstrap_repo.py` will load it automatically. CLI flags still override the config file.
 

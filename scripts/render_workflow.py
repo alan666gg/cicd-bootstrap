@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import json
+import shlex
 from pathlib import Path
 from typing import Dict, List, Tuple
 
@@ -12,6 +13,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 SKILL_DIR = SCRIPT_DIR.parent
 ASSETS_DIR = SKILL_DIR / "assets"
 REMOTE_DEPLOY_SCRIPT_RELATIVE_PATH = "scripts/remote_deploy.sh"
+DEPENDENCY_CHECK_SCRIPT_RELATIVE_PATH = "scripts/check_dependencies.sh"
 DEFAULT_ACTION_REFS = {
     "actions/checkout": "v4",
     "actions/setup-go": "v5",
@@ -102,9 +104,12 @@ def write_file(path: Path, content: str) -> None:
 
 
 def support_file_paths(project_root: Path, specs: List[Dict[str, object]]) -> List[Path]:
+    paths: List[Path] = []
     if any(str(spec["deploy_mode"]) == "docker-ssh" for spec in specs):
-        return [project_root / REMOTE_DEPLOY_SCRIPT_RELATIVE_PATH]
-    return []
+        paths.append(project_root / REMOTE_DEPLOY_SCRIPT_RELATIVE_PATH)
+    if any(str(spec["deploy_mode"]) == "docker-ssh" and (spec["test_dependency_checks"] or spec["prod_dependency_checks"]) for spec in specs):
+        paths.append(project_root / DEPENDENCY_CHECK_SCRIPT_RELATIVE_PATH)
+    return paths
 
 
 def read_repo_config(project_root: Path) -> Dict[str, object]:
@@ -364,6 +369,52 @@ def image_registry_host(registry: str) -> str:
     return registry.split("/", 1)[0].strip().lower()
 
 
+def build_dependency_reminder_step(checks: List[str], environment_name: str) -> str:
+    if not checks:
+        return ""
+    lines = [
+        "      - name: Remind runtime dependencies",
+        "        run: |",
+        f'          echo "::notice::Runtime dependencies configured for {environment_name}:"',
+    ]
+    for check in checks:
+        lines.append(f'          echo "  - {check}"')
+    return "\n".join(lines) + "\n"
+
+
+def build_remote_dependency_upload_step(checks: List[str], env_prefix: str, script_path: str) -> str:
+    if not checks:
+        return ""
+    prefix = env_prefix.upper()
+    printf_lines = ["          printf '%s\\n' \\"]
+    for index, check in enumerate(checks):
+        suffix = " \\" if index < len(checks) - 1 else ""
+        printf_lines.append(f"            {shlex.quote(check)}{suffix}")
+    printf_lines.append("            > dependency_checks.txt")
+    printf_block = "\n".join(printf_lines)
+    return f"""      - name: Upload dependency check script
+        run: scp -P "${{{prefix}_PORT}}" "{script_path}" "${{{prefix}_USER}}@${{{prefix}_HOST}}:${{{prefix}_REMOTE_DIR}}/check_dependencies.sh"
+
+      - name: Upload dependency check definitions
+        run: |
+{printf_block}
+          scp -P "${{{prefix}_PORT}}" dependency_checks.txt "${{{prefix}_USER}}@${{{prefix}_HOST}}:${{{prefix}_REMOTE_DIR}}/dependency_checks.txt"
+
+"""
+
+
+def build_remote_dependency_check_step(checks: List[str], env_prefix: str, blocking: str) -> str:
+    if not checks:
+        return ""
+    prefix = env_prefix.upper()
+    return f"""      - name: Check runtime dependencies
+        run: |
+          ssh -p "${{{prefix}_PORT}}" "${{{prefix}_USER}}@${{{prefix}_HOST}}" \\
+            "DEPENDENCY_CHECKS_FILE='${{{prefix}_REMOTE_DIR}}/dependency_checks.txt' DEPENDENCY_CHECKS_BLOCKING='{blocking}' bash '${{{prefix}_REMOTE_DIR}}/check_dependencies.sh'"
+
+"""
+
+
 def service_slug(service_path: str, fallback: str) -> str:
     raw = service_path if service_path != "." else fallback
     return normalize_name(raw.strip("./"), fallback)
@@ -416,6 +467,9 @@ def resolve_service_specs(project_root: Path, repo_config: Dict[str, object], ar
     healthcheck_timeout_seconds = str(repo_config.get("healthcheck_timeout_seconds", "40")).strip() or "40"
     rollback_on_failure = "true" if bool_from_config(repo_config, "rollback_on_failure", True) else "false"
     remote_image_retention = str(repo_config.get("remote_image_retention", 3))
+    test_dependency_checks = [str(item) for item in repo_config.get("dependency_checks_test", [])]
+    prod_dependency_checks = [str(item) for item in repo_config.get("dependency_checks_prod", [])]
+    dependency_checks_blocking = "true" if bool_from_config(repo_config, "dependency_checks_blocking", False) else "false"
 
     specs: List[Dict[str, object]] = []
     for current_service_path in service_paths:
@@ -473,6 +527,9 @@ def resolve_service_specs(project_root: Path, repo_config: Dict[str, object], ar
                 "healthcheck_timeout_seconds": healthcheck_timeout_seconds,
                 "rollback_on_failure": rollback_on_failure,
                 "remote_image_retention": remote_image_retention,
+                "test_dependency_checks": test_dependency_checks,
+                "prod_dependency_checks": prod_dependency_checks,
+                "dependency_checks_blocking": dependency_checks_blocking,
                 "repo_config": repo_config,
                 "multi_service": multi_service,
             }
@@ -523,6 +580,43 @@ def build_replacements(spec: Dict[str, object], workflow_kind: str) -> Dict[str,
         action_replacements.get("ACTION_TRIVY", ""),
         str(spec["job_timeout_minutes"]),
     )
+    dependency_checks: List[str] = []
+    dependency_environment = ""
+    dependency_upload_step = ""
+    dependency_check_step = ""
+    dependency_reminder_step = ""
+    if workflow_kind == "deploy-test":
+        dependency_checks = list(spec["test_dependency_checks"])
+        dependency_environment = str(spec["test_environment"])
+        if str(spec["deploy_mode"]) == "docker-ssh":
+            dependency_upload_step = build_remote_dependency_upload_step(
+                dependency_checks,
+                "test",
+                DEPENDENCY_CHECK_SCRIPT_RELATIVE_PATH,
+            )
+            dependency_check_step = build_remote_dependency_check_step(
+                dependency_checks,
+                "test",
+                str(spec["dependency_checks_blocking"]),
+            )
+        else:
+            dependency_reminder_step = build_dependency_reminder_step(dependency_checks, dependency_environment)
+    elif workflow_kind == "deploy-prod":
+        dependency_checks = list(spec["prod_dependency_checks"])
+        dependency_environment = str(spec["prod_environment"])
+        if str(spec["deploy_mode"]) == "docker-ssh":
+            dependency_upload_step = build_remote_dependency_upload_step(
+                dependency_checks,
+                "prod",
+                DEPENDENCY_CHECK_SCRIPT_RELATIVE_PATH,
+            )
+            dependency_check_step = build_remote_dependency_check_step(
+                dependency_checks,
+                "prod",
+                str(spec["dependency_checks_blocking"]),
+            )
+        else:
+            dependency_reminder_step = build_dependency_reminder_step(dependency_checks, dependency_environment)
 
     replacements = {
         "APP_NAME": str(spec["app_name"]),
@@ -545,11 +639,16 @@ def build_replacements(spec: Dict[str, object], workflow_kind: str) -> Dict[str,
         "IMAGE_REGISTRY": str(spec["image_registry"]),
         "IMAGE_REGISTRY_HOST": str(spec["image_registry_host"]),
         "REMOTE_DEPLOY_SCRIPT_PATH": REMOTE_DEPLOY_SCRIPT_RELATIVE_PATH,
+        "DEPENDENCY_CHECK_SCRIPT_PATH": DEPENDENCY_CHECK_SCRIPT_RELATIVE_PATH,
         "TEST_HEALTHCHECK_URL": str(spec["test_healthcheck_url"]),
         "PROD_HEALTHCHECK_URL": str(spec["prod_healthcheck_url"]),
         "HEALTHCHECK_TIMEOUT_SECONDS": str(spec["healthcheck_timeout_seconds"]),
         "ROLLBACK_ON_FAILURE": str(spec["rollback_on_failure"]),
         "REMOTE_IMAGE_RETENTION": str(spec["remote_image_retention"]),
+        "DEPENDENCY_CHECKS_BLOCKING": str(spec["dependency_checks_blocking"]),
+        "DEPENDENCY_UPLOAD_STEP": dependency_upload_step,
+        "DEPENDENCY_CHECK_STEP": dependency_check_step,
+        "DEPENDENCY_REMINDER_STEP": dependency_reminder_step,
         "GO_CACHE_STEPS": go_cache_steps,
         "NODE_CACHE_BLOCK": node_cache_block,
         "PYTHON_CACHE_BLOCK": python_cache_block,
@@ -598,10 +697,14 @@ def render_support_files(project_root: Path, specs: List[Dict[str, object]]) -> 
     paths = support_file_paths(project_root, specs)
     if not paths:
         return []
-    script_template = load_template(ASSETS_DIR / "shared" / "remote_deploy.sh.tmpl")
-    script_path = paths[0]
-    write_file(script_path, script_template)
-    return [script_path]
+    written: List[Path] = []
+    for path in paths:
+        if path.name == "remote_deploy.sh":
+            write_file(path, load_template(ASSETS_DIR / "shared" / "remote_deploy.sh.tmpl"))
+        elif path.name == "check_dependencies.sh":
+            write_file(path, load_template(ASSETS_DIR / "shared" / "check_dependencies.sh.tmpl"))
+        written.append(path)
+    return written
 
 
 def main() -> int:

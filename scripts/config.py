@@ -56,6 +56,10 @@ LIST_FIELDS = {
     "test_branches",
     "allow_actions",
 }
+RAW_LIST_FIELDS = {
+    "dependency_checks_test",
+    "dependency_checks_prod",
+}
 BOOL_FIELDS = {
     "generate_dockerfile",
     "rollback_on_failure",
@@ -63,6 +67,7 @@ BOOL_FIELDS = {
     "security_scan_blocking",
     "enable_cache",
     "prod_requires_approval",
+    "dependency_checks_blocking",
 }
 INT_FIELDS = {
     "config_version",
@@ -85,6 +90,9 @@ DEFAULTS: Dict[str, Any] = {
     "config_version": 1,
     "action_pin_mode": "tag",
     "allow_actions": [],
+    "dependency_checks_test": [],
+    "dependency_checks_prod": [],
+    "dependency_checks_blocking": False,
     "default_shell": SAFE_BASH_SHELL,
     "default_job_timeout_minutes": 20,
     "deploy_job_timeout_minutes": 30,
@@ -157,6 +165,11 @@ def normalize_values(config: Dict[str, object]) -> Dict[str, object]:
     normalized["default_branches"] = ensure_list(normalized.get("default_branches"))
     normalized["test_branches"] = ensure_list(normalized.get("test_branches"))
     normalized["allow_actions"] = ensure_list(normalized.get("allow_actions"))
+    for field in RAW_LIST_FIELDS:
+        value = normalized.get(field) or []
+        if not isinstance(value, list):
+            raise SystemExit(f"invalid repo config field '{field}': expected array of strings")
+        normalized[field] = [str(item).strip() for item in value if str(item).strip()]
     return normalized
 
 
@@ -166,6 +179,8 @@ def validate_repo_config(config: Dict[str, object]) -> Dict[str, object]:
         validate_type(config, field, "string", lambda value: isinstance(value, str))
     for field in LIST_FIELDS:
         validate_type(config, field, "array or comma-separated string", lambda value: isinstance(value, (list, str)))
+    for field in RAW_LIST_FIELDS:
+        validate_type(config, field, "array of strings", lambda value: isinstance(value, list))
     for field in BOOL_FIELDS:
         validate_type(config, field, "boolean", lambda value: isinstance(value, bool))
     for field in INT_FIELDS - {"config_version"}:

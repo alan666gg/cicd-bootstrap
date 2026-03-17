@@ -1,0 +1,76 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+DEPENDENCY_CHECKS_FILE="${DEPENDENCY_CHECKS_FILE:?DEPENDENCY_CHECKS_FILE is required}"
+DEPENDENCY_CHECKS_BLOCKING="${DEPENDENCY_CHECKS_BLOCKING:-false}"
+DEPENDENCY_CHECK_TIMEOUT_SECONDS="${DEPENDENCY_CHECK_TIMEOUT_SECONDS:-5}"
+
+log_event() {
+  local level="$1"
+  shift
+  printf '[%s] level=%s %s\n' "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" "$level" "$*"
+}
+
+check_tcp() {
+  local target="$1"
+  local host="${target%:*}"
+  local port="${target##*:}"
+  timeout "$DEPENDENCY_CHECK_TIMEOUT_SECONDS" bash -c "cat < /dev/null > /dev/tcp/${host}/${port}" >/dev/null 2>&1
+}
+
+check_http() {
+  local url="$1"
+  curl -fsS --max-time "$DEPENDENCY_CHECK_TIMEOUT_SECONDS" "$url" >/dev/null
+}
+
+check_command() {
+  local command="$1"
+  bash -lc "$command" >/dev/null
+}
+
+if [[ ! -f "$DEPENDENCY_CHECKS_FILE" ]]; then
+  log_event warn "event=dependency_checks.skip reason=missing_file file=${DEPENDENCY_CHECKS_FILE}"
+  exit 0
+fi
+
+failures=0
+while IFS= read -r check || [[ -n "$check" ]]; do
+  [[ -z "$check" ]] && continue
+  if [[ "$check" == tcp://* ]]; then
+    target="${check#tcp://}"
+    if check_tcp "$target"; then
+      log_event info "event=dependency_check.pass type=tcp target=${target}"
+    else
+      log_event warn "event=dependency_check.fail type=tcp target=${target}"
+      failures=$((failures + 1))
+    fi
+  elif [[ "$check" == http://* || "$check" == https://* ]]; then
+    if check_http "$check"; then
+      log_event info "event=dependency_check.pass type=http target=${check}"
+    else
+      log_event warn "event=dependency_check.fail type=http target=${check}"
+      failures=$((failures + 1))
+    fi
+  elif [[ "$check" == cmd:* ]]; then
+    command="${check#cmd:}"
+    if check_command "$command"; then
+      log_event info "event=dependency_check.pass type=command"
+    else
+      log_event warn "event=dependency_check.fail type=command"
+      failures=$((failures + 1))
+    fi
+  else
+    log_event warn "event=dependency_check.skip reason=unsupported check=${check}"
+  fi
+done < "$DEPENDENCY_CHECKS_FILE"
+
+if (( failures > 0 )) && [[ "$DEPENDENCY_CHECKS_BLOCKING" == "true" ]]; then
+  log_event error "event=dependency_checks.failed count=${failures} blocking=true"
+  exit 1
+fi
+
+if (( failures > 0 )); then
+  log_event warn "event=dependency_checks.completed count=${failures} blocking=false"
+else
+  log_event info "event=dependency_checks.completed count=0"
+fi

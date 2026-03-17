@@ -13,6 +13,9 @@ def build_checklist(
     deploy_mode: str,
     test_branch: str,
     service_types: Optional[List[str]] = None,
+    dependency_checks_test: Optional[List[str]] = None,
+    dependency_checks_prod: Optional[List[str]] = None,
+    dependency_checks_blocking: bool = False,
 ) -> str:
     service_lines = "\n".join(f"  - `{service_path}`" for service_path in service_paths)
     normalized_service_types = sorted({service_type for service_type in (service_types or []) if service_type})
@@ -122,6 +125,8 @@ def build_checklist(
             "- `pinned_actions`",
             "- `enable_cache`",
             "- `remote_image_retention`",
+            "- `dependency_checks_test` / `dependency_checks_prod`",
+            "- `dependency_checks_blocking`",
             "- `test_environment`",
             "- `prod_environment`",
             "",
@@ -157,6 +162,26 @@ def build_checklist(
     lines.extend(
         [
             "",
+            "## 依赖检查",
+            "",
+        ]
+    )
+
+    if dependency_checks_test or dependency_checks_prod:
+        if dependency_checks_test:
+            lines.append("- 测试环境依赖预检：")
+            lines.extend(f"  - `{item}`" for item in dependency_checks_test)
+        if dependency_checks_prod:
+            lines.append("- 生产环境依赖预检：")
+            lines.extend(f"  - `{item}`" for item in dependency_checks_prod)
+        lines.append(f"- 依赖检查阻断模式：`{'true' if dependency_checks_blocking else 'false'}`")
+        lines.append("- 目前支持：`tcp://host:port`、`http(s)://...`、`cmd:<shell command>`")
+    else:
+        lines.append("- 当前未配置依赖预检；如果服务依赖 Redis / MySQL / MQ，建议至少补一层提醒或检查。")
+
+    lines.extend(
+        [
+            "",
             "## 使用说明",
             "",
         ]
@@ -167,9 +192,10 @@ def build_checklist(
             [
                 "1. 先把 Secrets 和 Variables 配齐。",
                 "2. workflow 会自动创建远端目录，并上传镜像 tarball 和 `scripts/remote_deploy.sh`。",
-                "3. 如果保留最近 N 个镜像，优先在 repo config 里设置 `remote_image_retention`，或在 GitHub Variables 里覆盖环境值。",
-                "4. 推送到测试分支，观察 `CI` 和 `Deploy Test` 工作流。",
-                "5. 确认测试环境没问题后，再手动触发 `Deploy Prod`。",
+                "3. 如果服务依赖 Redis / MySQL / MQ，优先在 repo config 里声明 `dependency_checks_test` / `dependency_checks_prod`。",
+                "4. 如果保留最近 N 个镜像，优先在 repo config 里设置 `remote_image_retention`，或在 GitHub Variables 里覆盖环境值。",
+                "5. 推送到测试分支，观察 `CI` 和 `Deploy Test` 工作流。",
+                "6. 确认测试环境没问题后，再手动触发 `Deploy Prod`。",
             ]
         )
     elif deploy_mode == "docker-registry-only":
@@ -178,9 +204,10 @@ def build_checklist(
                 "1. 先确认镜像仓库前缀是否正确，例如 `ghcr.io/acme-team`。",
                 "2. 如果 registry 前缀放在 `IMAGE_REGISTRY` 变量里，workflow 会自动把前缀转成小写并复用对应 host 登录。",
                 "3. 配置 `REGISTRY_USERNAME` 和 `REGISTRY_PASSWORD`。",
-                "4. 如果变量很多，优先用 `scripts/apply_github_config.py --dry-run` 预览，再批量写入。",
-                "5. 推送到测试分支，确认测试镜像已经成功推送。",
-                "6. 再手动触发生产 workflow，推送生产标签。",
+                "4. 如果运行时依赖很多，至少在 repo config 里声明 `dependency_checks_test` / `dependency_checks_prod`，让 workflow 和 checklist 提醒团队。",
+                "5. 如果变量很多，优先用 `scripts/apply_github_config.py --dry-run` 预览，再批量写入。",
+                "6. 推送到测试分支，确认测试镜像已经成功推送。",
+                "7. 再手动触发生产 workflow，推送生产标签。",
             ]
         )
     else:
@@ -209,6 +236,8 @@ def build_checklist(
             "- 如果配置了 healthcheck URL，部署后会自动探活。",
             "- `rollback_on_failure` 默认开启，healthcheck 失败时会尝试回滚到旧镜像。",
             "- `remote_image_retention` 默认保留最近 3 个镜像，避免远端 Docker 主机无限堆积历史镜像。",
+            "- 如果声明了 `dependency_checks_test` / `dependency_checks_prod`，docker-ssh workflow 会在远端切换前先做依赖预检。",
+            "- `dependency_checks_blocking=false` 时只提醒不阻断；设成 `true` 后依赖不通会直接拦截部署。",
             "",
             "## GitHub 批量配置",
             "",
@@ -252,7 +281,17 @@ def main() -> int:
     deploy_mode = str(specs[0]["deploy_mode"]) if len({str(spec["deploy_mode"]) for spec in specs}) == 1 else "mixed"
     test_branch = str(specs[0]["test_branches"][0]) if specs else "develop"
     service_types = [str(spec["project_type"]) for spec in specs]
-    content = build_checklist(project_root, service_paths, app_name, deploy_mode, test_branch, service_types)
+    content = build_checklist(
+        project_root,
+        service_paths,
+        app_name,
+        deploy_mode,
+        test_branch,
+        service_types,
+        list(repo_config.get("dependency_checks_test", [])),
+        list(repo_config.get("dependency_checks_prod", [])),
+        bool(repo_config.get("dependency_checks_blocking", False)),
+    )
 
     output_file = Path(args.output_file).resolve()
     output_file.parent.mkdir(parents=True, exist_ok=True)

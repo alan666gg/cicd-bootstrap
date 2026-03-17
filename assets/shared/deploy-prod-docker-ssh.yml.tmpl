@@ -58,6 +58,8 @@ jobs:
       - name: Upload remote deploy script
         run: scp -P "$PROD_PORT" "__REMOTE_DEPLOY_SCRIPT_PATH__" "${PROD_USER}@${PROD_HOST}:${PROD_REMOTE_DIR}/remote_deploy.sh"
 
+__DEPENDENCY_UPLOAD_STEP__
+__DEPENDENCY_CHECK_STEP__
       - name: Switch container
         run: |
           ssh -p "$PROD_PORT" "${PROD_USER}@${PROD_HOST}" \
