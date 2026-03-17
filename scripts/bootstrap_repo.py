@@ -9,8 +9,10 @@ from generate_dockerfile import generate_service_dockerfiles
 from generate_checklist import build_checklist
 from render_workflow import (
     read_repo_config,
+    render_support_files,
     render_service_workflows,
     resolve_service_specs,
+    support_file_paths,
     workflow_filename,
 )
 from validate_workflow import validate_file, validate_with_actionlint
@@ -87,13 +89,15 @@ def main() -> int:
         dockerfile_results = generate_service_dockerfiles(project_root, repo_config, args)
     specs = resolve_service_specs(project_root, repo_config, args)
     workflow_paths = expected_workflow_paths(project_root, workflow_dir, specs)
+    helper_paths = support_file_paths(project_root, specs)
 
-    ensure_can_write(workflow_paths, checklist_file, args.force)
+    ensure_can_write([*workflow_paths, *helper_paths], checklist_file, args.force)
     cleanup_stale_workflows(workflow_dir, workflow_paths, args.force)
 
     rendered_files: List[Path] = []
     for spec in specs:
         rendered_files.extend(render_service_workflows(workflow_dir, spec))
+    support_files = render_support_files(project_root, specs)
 
     service_paths = [str(spec["service_path"]) for spec in specs]
     app_name_label = str(specs[0]["app_name"]) if len(specs) == 1 else ", ".join(str(spec["app_name"]) for spec in specs)
@@ -122,6 +126,7 @@ def main() -> int:
         ],
         "workflow_dir": str(workflow_dir),
         "checklist_file": str(checklist_file),
+        "support_files": [str(path) for path in support_files],
         "dockerfiles": dockerfile_results,
         "errors": errors,
     }

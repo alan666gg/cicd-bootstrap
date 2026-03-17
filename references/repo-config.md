@@ -27,6 +27,10 @@ Branch defaults:
 
 Organization defaults:
 - `image_registry`
+- `healthcheck_url_test`
+- `healthcheck_url_prod`
+- `healthcheck_timeout_seconds`
+- `rollback_on_failure`
 - `runner`
 - `enable_security_scan`
 - `security_scan_blocking`
@@ -51,6 +55,10 @@ Dockerfile generation:
   "default_branch": "main",
   "test_branches": ["develop", "release/*"],
   "image_registry": "ghcr.io/acme-platform",
+  "healthcheck_url_test": "http://127.0.0.1:8080/healthz",
+  "healthcheck_url_prod": "http://127.0.0.1:8080/healthz",
+  "healthcheck_timeout_seconds": 40,
+  "rollback_on_failure": true,
   "runner": "ubuntu-latest",
   "enable_security_scan": true,
   "security_scan_blocking": false,
@@ -75,3 +83,11 @@ Dockerfile generation:
 - `security_scan_blocking` defaults to `false` so bootstrap output is resilient to transient scanner/network failures.
 - When `security_scan_blocking` is `true`, CI remains non-blocking for pull requests and non-release test branches such as `develop`.
 - When `security_scan_blocking` is `true`, pushes to the default branch and `release` / `release/*` branches block on `HIGH` / `CRITICAL` findings.
+
+## Docker-SSH Deploy Defaults
+
+- `docker-ssh` workflows create the remote directory with `mkdir -p` before upload.
+- The remote switch logic is generated into `scripts/remote_deploy.sh`.
+- `healthcheck_url_test` and `healthcheck_url_prod` let you define environment-specific HTTP checks.
+- `healthcheck_timeout_seconds` defaults to `40`.
+- `rollback_on_failure` defaults to `true`, so a failed healthcheck attempts to start the previous image again.

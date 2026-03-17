@@ -57,6 +57,7 @@ npx skills add https://github.com/alan666gg/cicd-bootstrap.git --skill github-ci
 - 生成 `ci.yml`
 - 生成 `deploy-test.yml`
 - 生成 `deploy-prod.yml`
+- 在 `docker-ssh` 模式下生成 `scripts/remote_deploy.sh`
 - 生成 GitHub Secrets / Variables 清单
 - 对输出做基础校验
 
@@ -184,6 +185,10 @@ python3 scripts/detect_project.py --project-root . --service-path services/api
   "default_branch": "main",
   "test_branches": ["develop", "release/*"],
   "image_registry": "ghcr.io/acme-platform",
+  "healthcheck_url_test": "http://127.0.0.1:8080/healthz",
+  "healthcheck_url_prod": "http://127.0.0.1:8080/healthz",
+  "healthcheck_timeout_seconds": 40,
+  "rollback_on_failure": true,
   "runner": "ubuntu-latest",
   "enable_security_scan": true,
   "security_scan_blocking": false,
@@ -207,6 +212,8 @@ python3 scripts/bootstrap_repo.py --project-root . --force
 - monorepo 子服务如果没显式传 `app_name`，会默认生成 `repo-name + service-slug`，降低在 owner 级镜像仓库里撞名的概率
 - 安全扫描默认开启，但 bootstrap 输出里默认是 non-blocking，避免 Trivy 下载波动把第一次接入 CI 的团队直接卡死
 - 把 `security_scan_blocking` 设成 `true` 后，PR / develop 仍然只告警；默认分支和 `release` 分支才会对 `HIGH` / `CRITICAL` 问题阻断
+- `docker-ssh` workflow 会自动创建远端目录，并把切换逻辑下沉到 `scripts/remote_deploy.sh`
+- 如果配置了 healthcheck URL，部署成功前会自动探活，失败时默认回滚到旧镜像
 
 ## deploy strategy 说明
 

@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+IMAGE_TAG="${IMAGE_TAG:?IMAGE_TAG is required}"
+REMOTE_DIR="${REMOTE_DIR:?REMOTE_DIR is required}"
+CONTAINER_NAME="${CONTAINER_NAME:?CONTAINER_NAME is required}"
+TARBALL_NAME="${TARBALL_NAME:?TARBALL_NAME is required}"
+DOCKER_RUN_ARGS="${DOCKER_RUN_ARGS:-}"
+HEALTHCHECK_URL="${HEALTHCHECK_URL:-}"
+HEALTHCHECK_TIMEOUT_SECONDS="${HEALTHCHECK_TIMEOUT_SECONDS:-40}"
+ROLLBACK_ON_FAILURE="${ROLLBACK_ON_FAILURE:-true}"
+
+# shellcheck disable=SC2086
+run_container() {
+  docker run -d --name "${CONTAINER_NAME}" ${DOCKER_RUN_ARGS} "$1"
+}
+
+cleanup_container() {
+  docker stop "${CONTAINER_NAME}" >/dev/null 2>&1 || true
+  docker rm "${CONTAINER_NAME}" >/dev/null 2>&1 || true
+}
+
+wait_for_healthcheck() {
+  if [[ -z "$HEALTHCHECK_URL" ]]; then
+    echo "No healthcheck configured; skipping."
+    return 0
+  fi
+
+  local attempts=$((HEALTHCHECK_TIMEOUT_SECONDS / 2))
+  if (( attempts < 1 )); then
+    attempts=1
+  fi
+
+  for ((i = 1; i <= attempts; i++)); do
+    if curl -fsS "$HEALTHCHECK_URL" >/dev/null; then
+      echo "Healthcheck passed: ${HEALTHCHECK_URL}"
+      return 0
+    fi
+    sleep 2
+  done
+
+  echo "Healthcheck failed after ${HEALTHCHECK_TIMEOUT_SECONDS}s: ${HEALTHCHECK_URL}"
+  return 1
+}
+
+rollback() {
+  local old_image="$1"
+  if [[ "$ROLLBACK_ON_FAILURE" != "true" ]]; then
+    echo "Rollback disabled; leaving failed deployment stopped."
+    return 0
+  fi
+  if [[ -z "$old_image" ]]; then
+    echo "No previous image found; nothing to roll back to."
+    return 0
+  fi
+
+  echo "Rolling back to previous image: ${old_image}"
+  cleanup_container
+  run_container "$old_image"
+}
+
+docker load -i "${REMOTE_DIR}/${TARBALL_NAME}"
+
+old_image="$(docker inspect -f '{{.Config.Image}}' "${CONTAINER_NAME}" 2>/dev/null || true)"
+
+cleanup_container
+run_container "${IMAGE_TAG}"
+
+if ! wait_for_healthcheck; then
+  rollback "$old_image"
+  exit 1
+fi
+
+echo "Deploy succeeded"
+echo "image_tag=${IMAGE_TAG}"
+echo "container_name=${CONTAINER_NAME}"
+if docker port "${CONTAINER_NAME}" >/dev/null 2>&1; then
+  echo "port_mappings:"
+  docker port "${CONTAINER_NAME}"
+fi
+echo "logs_hint=docker logs --tail=50 ${CONTAINER_NAME}"

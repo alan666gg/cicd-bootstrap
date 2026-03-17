@@ -24,6 +24,9 @@ jobs:
       PROD_REMOTE_DIR: ${{ vars.PROD_REMOTE_DIR }}
       PROD_CONTAINER_NAME: ${{ vars.PROD_CONTAINER_NAME }}
       PROD_DOCKER_RUN_ARGS: ${{ vars.PROD_DOCKER_RUN_ARGS }}
+      PROD_HEALTHCHECK_URL: ${{ vars.PROD_HEALTHCHECK_URL || '__PROD_HEALTHCHECK_URL__' }}
+      PROD_HEALTHCHECK_TIMEOUT_SECONDS: ${{ vars.PROD_HEALTHCHECK_TIMEOUT_SECONDS || '__HEALTHCHECK_TIMEOUT_SECONDS__' }}
+      PROD_ROLLBACK_ON_FAILURE: ${{ vars.PROD_ROLLBACK_ON_FAILURE || '__ROLLBACK_ON_FAILURE__' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -42,14 +45,16 @@ jobs:
       - name: Add prod host to known_hosts
         run: ssh-keyscan -p "$PROD_PORT" -H "$PROD_HOST" >> ~/.ssh/known_hosts
 
+      - name: Create remote dir
+        run: ssh -p "$PROD_PORT" "${PROD_USER}@${PROD_HOST}" "mkdir -p '${PROD_REMOTE_DIR}'"
+
       - name: Upload image
         run: scp -P "$PROD_PORT" "${APP_NAME}_${{ github.sha }}.tar" "${PROD_USER}@${PROD_HOST}:${PROD_REMOTE_DIR}/"
 
+      - name: Upload remote deploy script
+        run: scp -P "$PROD_PORT" "__REMOTE_DEPLOY_SCRIPT_PATH__" "${PROD_USER}@${PROD_HOST}:${PROD_REMOTE_DIR}/remote_deploy.sh"
+
       - name: Switch container
         run: |
-          ssh -p "$PROD_PORT" "${PROD_USER}@${PROD_HOST}" "
-            docker load -i ${PROD_REMOTE_DIR}/${APP_NAME}_${{ github.sha }}.tar &&
-            docker stop ${PROD_CONTAINER_NAME} >/dev/null 2>&1 || true &&
-            docker rm ${PROD_CONTAINER_NAME} >/dev/null 2>&1 || true &&
-            docker run -d --name ${PROD_CONTAINER_NAME} ${PROD_DOCKER_RUN_ARGS} ${IMAGE_TAG}
-          "
+          ssh -p "$PROD_PORT" "${PROD_USER}@${PROD_HOST}" \
+            "IMAGE_TAG='${IMAGE_TAG}' REMOTE_DIR='${PROD_REMOTE_DIR}' TARBALL_NAME='${APP_NAME}_${{ github.sha }}.tar' CONTAINER_NAME='${PROD_CONTAINER_NAME}' DOCKER_RUN_ARGS='${PROD_DOCKER_RUN_ARGS}' HEALTHCHECK_URL='${PROD_HEALTHCHECK_URL}' HEALTHCHECK_TIMEOUT_SECONDS='${PROD_HEALTHCHECK_TIMEOUT_SECONDS}' ROLLBACK_ON_FAILURE='${PROD_ROLLBACK_ON_FAILURE}' bash '${PROD_REMOTE_DIR}/remote_deploy.sh'"

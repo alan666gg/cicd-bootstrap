@@ -27,6 +27,9 @@ jobs:
       TEST_REMOTE_DIR: ${{ vars.TEST_REMOTE_DIR }}
       TEST_CONTAINER_NAME: ${{ vars.TEST_CONTAINER_NAME }}
       TEST_DOCKER_RUN_ARGS: ${{ vars.TEST_DOCKER_RUN_ARGS }}
+      TEST_HEALTHCHECK_URL: ${{ vars.TEST_HEALTHCHECK_URL || '__TEST_HEALTHCHECK_URL__' }}
+      TEST_HEALTHCHECK_TIMEOUT_SECONDS: ${{ vars.TEST_HEALTHCHECK_TIMEOUT_SECONDS || '__HEALTHCHECK_TIMEOUT_SECONDS__' }}
+      TEST_ROLLBACK_ON_FAILURE: ${{ vars.TEST_ROLLBACK_ON_FAILURE || '__ROLLBACK_ON_FAILURE__' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -45,14 +48,16 @@ jobs:
       - name: Add test host to known_hosts
         run: ssh-keyscan -p "$TEST_PORT" -H "$TEST_HOST" >> ~/.ssh/known_hosts
 
+      - name: Create remote dir
+        run: ssh -p "$TEST_PORT" "${TEST_USER}@${TEST_HOST}" "mkdir -p '${TEST_REMOTE_DIR}'"
+
       - name: Upload image
         run: scp -P "$TEST_PORT" "${APP_NAME}_${{ github.sha }}.tar" "${TEST_USER}@${TEST_HOST}:${TEST_REMOTE_DIR}/"
 
+      - name: Upload remote deploy script
+        run: scp -P "$TEST_PORT" "__REMOTE_DEPLOY_SCRIPT_PATH__" "${TEST_USER}@${TEST_HOST}:${TEST_REMOTE_DIR}/remote_deploy.sh"
+
       - name: Switch container
         run: |
-          ssh -p "$TEST_PORT" "${TEST_USER}@${TEST_HOST}" "
-            docker load -i ${TEST_REMOTE_DIR}/${APP_NAME}_${{ github.sha }}.tar &&
-            docker stop ${TEST_CONTAINER_NAME} >/dev/null 2>&1 || true &&
-            docker rm ${TEST_CONTAINER_NAME} >/dev/null 2>&1 || true &&
-            docker run -d --name ${TEST_CONTAINER_NAME} ${TEST_DOCKER_RUN_ARGS} ${IMAGE_TAG}
-          "
+          ssh -p "$TEST_PORT" "${TEST_USER}@${TEST_HOST}" \
+            "IMAGE_TAG='${IMAGE_TAG}' REMOTE_DIR='${TEST_REMOTE_DIR}' TARBALL_NAME='${APP_NAME}_${{ github.sha }}.tar' CONTAINER_NAME='${TEST_CONTAINER_NAME}' DOCKER_RUN_ARGS='${TEST_DOCKER_RUN_ARGS}' HEALTHCHECK_URL='${TEST_HEALTHCHECK_URL}' HEALTHCHECK_TIMEOUT_SECONDS='${TEST_HEALTHCHECK_TIMEOUT_SECONDS}' ROLLBACK_ON_FAILURE='${TEST_ROLLBACK_ON_FAILURE}' bash '${TEST_REMOTE_DIR}/remote_deploy.sh'"

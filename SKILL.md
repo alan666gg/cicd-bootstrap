@@ -40,6 +40,7 @@ This command:
 - can generate a high-performance Dockerfile first when requested
 - reads `.github/cicd-bootstrap.json` automatically when present
 - writes workflow files to `.github/workflows`
+- writes `scripts/remote_deploy.sh` automatically for `docker-ssh`
 - generates a setup checklist at `.github/cicd-bootstrap-checklist.md`
 - validates the generated workflows
 
@@ -103,6 +104,10 @@ Example:
   "default_branch": "main",
   "test_branches": ["develop", "release/*"],
   "image_registry": "ghcr.io/acme-platform",
+  "healthcheck_url_test": "http://127.0.0.1:8080/healthz",
+  "healthcheck_url_prod": "http://127.0.0.1:8080/healthz",
+  "healthcheck_timeout_seconds": 40,
+  "rollback_on_failure": true,
   "runner": "ubuntu-latest",
   "enable_security_scan": true,
   "security_scan_blocking": false,
@@ -114,6 +119,7 @@ Example:
 For `docker-registry-only`, the workflow also lowercases the final registry prefix at runtime, so defaults like `ghcr.io/${{ github.repository_owner }}` and optional `IMAGE_REGISTRY` overrides remain valid for GHCR and similar registries.
 When a monorepo service does not specify `app_name`, the generator prefixes the service slug with the repository name by default so image names stay unique under owner-scoped registries.
 Bootstrap output keeps security scans enabled but defaults them to non-blocking mode so transient Trivy setup failures do not fail every first-run pipeline. Setting `security_scan_blocking` to `true` switches pushes to the default branch and `release` branches into blocking mode while keeping pull requests and `develop`-style test branches non-blocking.
+For `docker-ssh`, the generated workflows create the remote directory automatically, upload a generated `scripts/remote_deploy.sh`, run an optional healthcheck, and roll back to the previous image by default when the new container fails healthchecks.
 
 When this file exists, `bootstrap_repo.py` will load it automatically. CLI flags still override the config file.
 

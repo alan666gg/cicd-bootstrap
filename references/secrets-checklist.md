@@ -21,6 +21,12 @@
 ### Optional Variables
 - `TEST_PORT`
 - `PROD_PORT`
+- `TEST_HEALTHCHECK_URL`
+- `PROD_HEALTHCHECK_URL`
+- `TEST_HEALTHCHECK_TIMEOUT_SECONDS`
+- `PROD_HEALTHCHECK_TIMEOUT_SECONDS`
+- `TEST_ROLLBACK_ON_FAILURE`
+- `PROD_ROLLBACK_ON_FAILURE`
 
 ## docker-registry-only
 
@@ -56,5 +62,9 @@
 ## Notes
 
 - `docker-ssh` assumes the remote host already knows how to run the service.
+- `docker-ssh` now creates the remote directory automatically before upload.
+- `docker-ssh` generates `scripts/remote_deploy.sh` and uploads it during deploy.
+- If you set a healthcheck URL, deploy waits for the service to come up before succeeding.
+- Rollback defaults to enabled for docker-ssh deploys.
 - `docker-registry-only` publishes images only. Another system is expected to deploy them.
 - Teams should prefer `.github/cicd-bootstrap.json` for shared defaults instead of repeating values in every repository.

@@ -10,6 +10,7 @@ from naming import normalize_name
 SCRIPT_DIR = Path(__file__).resolve().parent
 SKILL_DIR = SCRIPT_DIR.parent
 ASSETS_DIR = SKILL_DIR / "assets"
+REMOTE_DEPLOY_SCRIPT_RELATIVE_PATH = "scripts/remote_deploy.sh"
 
 
 def detect_project(root: Path) -> Dict[str, object]:
@@ -77,6 +78,12 @@ def join_name(prefix: str, suffix: str) -> str:
 def write_file(path: Path, content: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content, encoding="utf-8")
+
+
+def support_file_paths(project_root: Path, specs: List[Dict[str, object]]) -> List[Path]:
+    if any(str(spec["deploy_mode"]) == "docker-ssh" for spec in specs):
+        return [project_root / REMOTE_DEPLOY_SCRIPT_RELATIVE_PATH]
+    return []
 
 
 def read_repo_config(project_root: Path) -> Dict[str, object]:
@@ -292,6 +299,10 @@ def resolve_service_specs(project_root: Path, repo_config: Dict[str, object], ar
     enable_cache = bool_from_config(repo_config, "enable_cache", True)
     enable_security_scan = bool_from_config(repo_config, "enable_security_scan", True)
     security_scan_blocking = bool_from_config(repo_config, "security_scan_blocking", False)
+    test_healthcheck_url = str(repo_config.get("healthcheck_url_test", "")).strip()
+    prod_healthcheck_url = str(repo_config.get("healthcheck_url_prod", "")).strip()
+    healthcheck_timeout_seconds = str(repo_config.get("healthcheck_timeout_seconds", "40")).strip() or "40"
+    rollback_on_failure = "true" if bool_from_config(repo_config, "rollback_on_failure", True) else "false"
 
     specs: List[Dict[str, object]] = []
     for current_service_path in service_paths:
@@ -341,6 +352,10 @@ def resolve_service_specs(project_root: Path, repo_config: Dict[str, object], ar
                 "enable_cache": enable_cache,
                 "enable_security_scan": enable_security_scan,
                 "security_scan_blocking": security_scan_blocking,
+                "test_healthcheck_url": test_healthcheck_url,
+                "prod_healthcheck_url": prod_healthcheck_url,
+                "healthcheck_timeout_seconds": healthcheck_timeout_seconds,
+                "rollback_on_failure": rollback_on_failure,
                 "multi_service": multi_service,
             }
         )
@@ -379,6 +394,11 @@ def build_replacements(spec: Dict[str, object], workflow_kind: str) -> Dict[str,
         "PROD_ENVIRONMENT": str(spec["prod_environment"]),
         "IMAGE_REGISTRY": str(spec["image_registry"]),
         "IMAGE_REGISTRY_HOST": str(spec["image_registry_host"]),
+        "REMOTE_DEPLOY_SCRIPT_PATH": REMOTE_DEPLOY_SCRIPT_RELATIVE_PATH,
+        "TEST_HEALTHCHECK_URL": str(spec["test_healthcheck_url"]),
+        "PROD_HEALTHCHECK_URL": str(spec["prod_healthcheck_url"]),
+        "HEALTHCHECK_TIMEOUT_SECONDS": str(spec["healthcheck_timeout_seconds"]),
+        "ROLLBACK_ON_FAILURE": str(spec["rollback_on_failure"]),
         "GO_CACHE_STEPS": go_cache_steps,
         "NODE_CACHE_BLOCK": node_cache_block,
         "SECURITY_SCAN_JOB": security_scan_job,
@@ -417,6 +437,16 @@ def render_service_workflows(output_dir: Path, spec: Dict[str, object]) -> List[
     return written
 
 
+def render_support_files(project_root: Path, specs: List[Dict[str, object]]) -> List[Path]:
+    paths = support_file_paths(project_root, specs)
+    if not paths:
+        return []
+    script_template = load_template(ASSETS_DIR / "shared" / "remote_deploy.sh.tmpl")
+    script_path = paths[0]
+    write_file(script_path, script_template)
+    return [script_path]
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Render GitHub Actions workflows from templates.")
     parser.add_argument("--project-root", default=".", help="Repository root")
@@ -451,6 +481,8 @@ def main() -> int:
                 "deploy_mode": str(spec["deploy_mode"]),
             }
         )
+    support_files = render_support_files(project_root, specs)
+    written_files.extend(str(path) for path in support_files)
 
     summary = {
         "project_root": str(project_root),
@@ -459,6 +491,7 @@ def main() -> int:
         "service_paths": [str(spec["service_path"]) for spec in specs],
         "output_dir": str(output_dir),
         "files": written_files,
+        "support_files": [str(path) for path in support_files],
         "services": services,
         "required_secrets_reference": str(SKILL_DIR / "references" / "secrets-checklist.md"),
     }
