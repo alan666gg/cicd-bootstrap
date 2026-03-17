@@ -234,6 +234,83 @@ Use [references/deploy-patterns.md](references/deploy-patterns.md) when deciding
 Use [references/repo-config.md](references/repo-config.md) when a team wants to standardize defaults across many repositories.
 If the user wants direct output in one shot, prefer `scripts/bootstrap_repo.py`.
 
+## Teammate Onboarding
+
+When the user asks how a new teammate should use this skill, what the handoff flow should look like, or asks for a short SOP, answer with a direct operational flow instead of abstract feature descriptions.
+
+Cover these points in order:
+
+1. Preconditions
+   - teammate has local repo checkout
+   - teammate already installed `github-cicd-bootstrap`
+   - teammate is in the repo root
+
+2. First command to run
+   - for a single-service repo, show:
+   ```bash
+   python3 ~/.agents/skills/github-cicd-bootstrap/scripts/bootstrap_repo.py \
+     --project-root . \
+     --deploy-mode docker-registry-only \
+     --generate-dockerfile \
+     --force
+   ```
+   - for a monorepo, show:
+   ```bash
+   python3 ~/.agents/skills/github-cicd-bootstrap/scripts/bootstrap_repo.py \
+     --project-root . \
+     --service-paths web_api,sourceBinance \
+     --deploy-mode docker-registry-only \
+     --force
+   ```
+   - mention that some environments use `~/.codex/skills/...` instead of `~/.agents/skills/...`
+
+3. What files get generated
+   - `.github/workflows/*.yml`
+   - `.github/cicd-bootstrap-checklist.md`
+   - optional `Dockerfile` / `.dockerignore`
+
+4. GitHub setup
+   - send the teammate to `Settings -> Secrets and variables -> Actions`
+   - for `docker-registry-only`, call out:
+     - `REGISTRY_USERNAME`
+     - `REGISTRY_PASSWORD`
+   - mention optional `IMAGE_REGISTRY`
+
+5. Commit and trigger flow
+   - show:
+   ```bash
+   git add .
+   git commit -m "chore: bootstrap ci/cd"
+   git push
+   ```
+   - explain that they should then inspect `CI`, `Deploy Test`, and `Deploy Prod` in GitHub Actions
+
+6. Team defaults
+   - strongly recommend adding `.github/cicd-bootstrap.json`
+   - call out these keys:
+     - `deploy_mode` / `deploy_strategy`
+     - `service_path` / `service_paths`
+     - `test_branch` / `test_branches`
+     - `image_registry`
+     - `enable_security_scan`
+     - `security_scan_blocking`
+
+7. Common pitfalls
+   - root detection returns `unknown` -> add `--service-path` or `--service-paths`
+   - image push fails -> verify registry credentials first
+   - Trivy scan occasionally fails -> bootstrap defaults to non-blocking; tighten later if needed
+
+8. Natural-language prompts teammates can give AI
+   - `用 github-cicd-bootstrap 给这个仓库补一套 GitHub CI/CD，走 docker-registry-only，并在需要时自动生成 Dockerfile。`
+   - `这是个 monorepo，请给 web_api 和 sourceBinance 生成 workflow，并告诉我还缺哪些 GitHub Secrets。`
+   - `先帮我检测这个仓库该用哪种 deploy strategy，再生成 workflow 和 checklist。`
+
+If the user asks for a very short version, give them this one-liner:
+
+```text
+进仓库根目录，先跑 bootstrap_repo.py；再按 .github/cicd-bootstrap-checklist.md 去补 GitHub Secrets / Variables；最后 git push 看 Actions。
+```
+
 ## Guardrails
 
 - Do not overwrite an existing workflow unless the user clearly wants replacement.
