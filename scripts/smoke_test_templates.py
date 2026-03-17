@@ -149,6 +149,14 @@ def main() -> int:
                 project_root / ".github" / "cicd-bootstrap-checklist.md",
                 ["REGISTRY_USERNAME", "REGISTRY_PASSWORD", "IMAGE_REGISTRY"],
             )
+            assert_contains(
+                project_root / ".github" / "workflows" / "ci.yml",
+                [
+                    "- name: Explain security scan mode",
+                    "run: |",
+                    'echo "Security scan mode: ${{ steps.scan_mode.outputs.mode }}"',
+                ],
+            )
             results.append(
                 {
                     "scenario": name,
@@ -180,6 +188,14 @@ def main() -> int:
         assert_contains(
             monorepo_root / ".github" / "cicd-bootstrap-checklist.md",
             ["python-service", "java-service", "rust-service", "REGISTRY_USERNAME", "REGISTRY_PASSWORD"],
+        )
+        assert_contains(
+            monorepo_root / ".github" / "workflows" / "ci-services-api.yml",
+            [
+                "- name: Explain security scan mode",
+                "run: |",
+                'echo "Security scan mode: ${{ steps.scan_mode.outputs.mode }}"',
+            ],
         )
         results.append(
             {

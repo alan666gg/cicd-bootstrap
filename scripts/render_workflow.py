@@ -285,7 +285,8 @@ def build_security_scan_job(
           fi
 
       - name: Explain security scan mode
-        run: echo "Security scan mode: ${{{{ steps.scan_mode.outputs.mode }}}}"
+        run: |
+          echo "Security scan mode: ${{{{ steps.scan_mode.outputs.mode }}}}"
 
       - name: Run Trivy filesystem scan
         continue-on-error: ${{{{ steps.scan_mode.outputs.continue_on_error == 'true' }}}}
