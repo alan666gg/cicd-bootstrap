@@ -34,6 +34,13 @@
 - `test_environment`
 - `prod_environment`
 
+### Optional GitHub Variables
+- `IMAGE_REGISTRY`
+
+### Notes
+- `IMAGE_REGISTRY` overrides the repo config registry prefix for registry-only workflows.
+- The workflow lowercases the final registry prefix before login and push so GHCR-style naming stays valid.
+
 ## ci-only
 
 ### Required GitHub Secrets

@@ -62,7 +62,7 @@ def build_checklist(project_root: Path, service_paths: List[str], app_name: str,
                 "",
                 "## 可选 Variables",
                 "",
-                "- `IMAGE_REGISTRY`（如果团队希望把 registry 前缀放到 GitHub Variables）",
+                "- `IMAGE_REGISTRY`（覆盖 repo config 里的 registry 前缀，workflow 会自动转成小写）",
             ]
         )
     else:
@@ -113,9 +113,10 @@ def build_checklist(project_root: Path, service_paths: List[str], app_name: str,
         lines.extend(
             [
                 "1. 先确认镜像仓库前缀是否正确，例如 `ghcr.io/acme-team`。",
-                "2. 配置 `REGISTRY_USERNAME` 和 `REGISTRY_PASSWORD`。",
-                "3. 推送到测试分支，确认测试镜像已经成功推送。",
-                "4. 再手动触发生产 workflow，推送生产标签。",
+                "2. 如果 registry 前缀放在 `IMAGE_REGISTRY` 变量里，workflow 会自动把前缀转成小写并复用对应 host 登录。",
+                "3. 配置 `REGISTRY_USERNAME` 和 `REGISTRY_PASSWORD`。",
+                "4. 推送到测试分支，确认测试镜像已经成功推送。",
+                "5. 再手动触发生产 workflow，推送生产标签。",
             ]
         )
     else:

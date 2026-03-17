@@ -15,6 +15,10 @@ Core:
 - `service_path`
 - `service_paths`
 
+`app_name` is normalized to lowercase kebab-case before it is used in workflow output, image names, and generated artifact names. For example, `seers-sourceBinance` becomes `seers-source-binance`.
+For `docker-registry-only`, `image_registry` is also trimmed and the workflow lowercases the final registry prefix at runtime before login and push.
+If `app_name` is omitted for a monorepo service, the generator falls back to `<repo-name>-<service-slug>` to reduce image-name collisions in shared registries.
+
 Branch defaults:
 - `default_branch`
 - `default_branches`

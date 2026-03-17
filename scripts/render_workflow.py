@@ -4,6 +4,8 @@ import json
 from pathlib import Path
 from typing import Dict, List, Tuple
 
+from naming import normalize_name
+
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 SKILL_DIR = SCRIPT_DIR.parent
@@ -62,8 +64,14 @@ def render_template(template: str, replacements: Dict[str, str]) -> str:
     return rendered
 
 
-def normalize(value, fallback: str) -> str:
+def coalesce(value, fallback: str) -> str:
     return value.strip() if value and value.strip() else fallback
+
+
+def join_name(prefix: str, suffix: str) -> str:
+    if prefix == suffix or prefix.endswith(f"-{suffix}"):
+        return prefix
+    return f"{prefix}-{suffix}"
 
 
 def write_file(path: Path, content: str) -> None:
@@ -198,16 +206,16 @@ def build_security_scan_job(enable_security_scan: bool, runner: str, build_job_n
 
 
 def image_registry(repo_config: Dict[str, object]) -> str:
-    return str(repo_config.get("image_registry", "ghcr.io/${{ github.repository_owner }}"))
+    return str(repo_config.get("image_registry", "ghcr.io/${{ github.repository_owner }}")).strip().rstrip("/")
 
 
 def image_registry_host(registry: str) -> str:
-    return registry.split("/", 1)[0]
+    return registry.split("/", 1)[0].strip().lower()
 
 
 def service_slug(service_path: str, fallback: str) -> str:
     raw = service_path if service_path != "." else fallback
-    return raw.strip("./").replace("/", "-").replace("_", "-")
+    return normalize_name(raw.strip("./"), fallback)
 
 
 def workflow_filename(base_name: str, slug: str, multi_service: bool) -> str:
@@ -240,6 +248,7 @@ def resolve_branches(repo_config: Dict[str, object], cli_test_branch: str) -> Tu
 def resolve_service_specs(project_root: Path, repo_config: Dict[str, object], args) -> List[Dict[str, object]]:
     service_paths = parse_service_paths(args.service_path, getattr(args, "service_paths", ""), repo_config)
     multi_service = len(service_paths) > 1
+    project_slug = normalize_name(project_root.name, "app")
     default_branches, test_branches = resolve_branches(repo_config, getattr(args, "test_branch", ""))
     runner = str(repo_config.get("runner", "ubuntu-latest"))
     test_environment = str(repo_config.get("test_environment", "test"))
@@ -264,10 +273,16 @@ def resolve_service_specs(project_root: Path, repo_config: Dict[str, object], ar
             raise SystemExit(f"docker-registry-only requires a Dockerfile in {current_service_path}")
 
         slug = service_slug(current_service_path, str(detected["app_name"]))
-        base_app_name = normalize(args.app_name, str(repo_config.get("app_name", detected["app_name"])))
-        app_name = f"{base_app_name}-{slug}" if multi_service and (args.app_name.strip() or repo_config.get("app_name")) else base_app_name
-        test_target = normalize(args.test_target, str(repo_config.get("test_target", app_name)))
-        prod_target = normalize(args.prod_target, str(repo_config.get("prod_target", app_name)))
+        explicit_app_name = coalesce(args.app_name, str(repo_config.get("app_name", "")))
+        if explicit_app_name:
+            base_app_name = normalize_name(explicit_app_name, str(detected["app_name"]))
+            app_name = join_name(base_app_name, slug) if multi_service else base_app_name
+        elif current_service_path != ".":
+            app_name = join_name(project_slug, slug)
+        else:
+            app_name = str(detected["app_name"])
+        test_target = coalesce(args.test_target, str(repo_config.get("test_target", app_name)))
+        prod_target = coalesce(args.prod_target, str(repo_config.get("prod_target", app_name)))
 
         specs.append(
             {

@@ -198,6 +198,13 @@ python3 scripts/detect_project.py --project-root . --service-path services/api
 python3 scripts/bootstrap_repo.py --project-root . --force
 ```
 
+说明：
+- `app_name` 和自动生成的 service slug 会统一归一化成 `lowercase + kebab-case`
+- 例如 `sourceBinance` 会变成 `source-binance`
+- 这样生成的 GHCR / Docker image name 会更稳，避免大小写导致推送失败
+- `docker-registry-only` workflow 也会在运行时把 `image_registry` 或可选的 `IMAGE_REGISTRY` 变量自动转成小写，并按最终 host 登录镜像仓库
+- monorepo 子服务如果没显式传 `app_name`，会默认生成 `repo-name + service-slug`，降低在 owner 级镜像仓库里撞名的概率
+
 ## deploy strategy 说明
 
 ### `docker-ssh`

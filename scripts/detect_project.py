@@ -4,6 +4,8 @@ import json
 from pathlib import Path
 from typing import Dict, List, Optional
 
+from naming import normalize_name
+
 
 def detect_package_manager(root: Path) -> Optional[str]:
     if (root / "pnpm-lock.yaml").exists():
@@ -85,7 +87,7 @@ def detect_project(root: Path) -> Dict[str, object]:
     else:
         deploy_mode = "ci-only"
 
-    app_name = root.name.replace("_", "-")
+    app_name = normalize_name(root.name, "app")
 
     return {
         "project_type": project_type,

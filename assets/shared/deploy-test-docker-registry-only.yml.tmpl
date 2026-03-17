@@ -20,12 +20,28 @@ jobs:
     timeout-minutes: 30
     environment: __TEST_ENVIRONMENT__
     env:
-      IMAGE_NAME: __IMAGE_REGISTRY__/__APP_NAME__
+      APP_NAME: __APP_NAME__
+      CONFIGURED_IMAGE_REGISTRY: __IMAGE_REGISTRY__
+      OVERRIDE_IMAGE_REGISTRY: ${{ vars.IMAGE_REGISTRY }}
       IMAGE_TAG: test-${{ github.sha }}
       IMAGE_BRANCH_TAG: test-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Resolve image target
+        id: image
+        shell: bash
+        run: |
+          registry="${OVERRIDE_IMAGE_REGISTRY:-$CONFIGURED_IMAGE_REGISTRY}"
+          registry="${registry,,}"
+          registry="${registry%/}"
+          if [[ -z "$registry" ]]; then
+            echo "::error::image registry is empty"
+            exit 1
+          fi
+          echo "image_name=${registry}/${APP_NAME}" >> "$GITHUB_OUTPUT"
+          echo "registry_host=${registry%%/*}" >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -33,7 +49,7 @@ jobs:
       - name: Login to registry
         uses: docker/login-action@v3
         with:
-          registry: __IMAGE_REGISTRY_HOST__
+          registry: ${{ steps.image.outputs.registry_host }}
           username: ${{ secrets.REGISTRY_USERNAME }}
           password: ${{ secrets.REGISTRY_PASSWORD }}
 
@@ -43,5 +59,5 @@ jobs:
           context: __DOCKER_CONTEXT__
           push: true
           tags: |
-            ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
-            ${{ env.IMAGE_NAME }}:${{ env.IMAGE_BRANCH_TAG }}
+            ${{ steps.image.outputs.image_name }}:${{ env.IMAGE_TAG }}
+            ${{ steps.image.outputs.image_name }}:${{ env.IMAGE_BRANCH_TAG }}
