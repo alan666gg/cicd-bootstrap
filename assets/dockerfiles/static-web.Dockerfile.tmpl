@@ -1,0 +1,16 @@
+# syntax=docker/dockerfile:1.7
+FROM node:20-alpine AS builder
+
+WORKDIR /app
+
+COPY __PACKAGE_FILES__ ./
+RUN __INSTALL_COMMAND__
+
+COPY . .
+RUN __BUILD_COMMAND__
+
+FROM nginx:1.27-alpine AS runner
+
+COPY --from=builder /app/__BUILD_DIR__ /usr/share/nginx/html
+
+EXPOSE 80

@@ -1,0 +1,33 @@
+# syntax=docker/dockerfile:1.7
+FROM --platform=$BUILDPLATFORM golang:1.22-alpine AS builder
+
+WORKDIR /src
+RUN apk add --no-cache ca-certificates tzdata git
+
+COPY go.mod ./
+__GO_SUM_COPY__
+
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    go mod download
+
+COPY . .
+
+ARG TARGETOS=linux
+ARG TARGETARCH=amd64
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
+    go build -trimpath -ldflags="-s -w" -o /out/__BINARY_NAME__ .
+
+FROM alpine:3.20 AS runner
+
+RUN apk add --no-cache ca-certificates tzdata && \
+    addgroup -S app && adduser -S -G app app
+
+WORKDIR /app
+COPY --from=builder /out/__BINARY_NAME__ /app/__BINARY_NAME__
+
+USER app
+
+ENTRYPOINT ["/app/__BINARY_NAME__"]

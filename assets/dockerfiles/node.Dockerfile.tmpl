@@ -1,0 +1,22 @@
+# syntax=docker/dockerfile:1.7
+FROM node:20-alpine AS builder
+
+WORKDIR /app
+
+COPY __PACKAGE_FILES__ ./
+RUN __INSTALL_COMMAND__
+
+COPY . .
+RUN __BUILD_COMMAND__
+RUN __PRUNE_COMMAND__
+
+FROM node:20-alpine AS runner
+
+ENV NODE_ENV=production
+WORKDIR /app
+
+COPY --from=builder /app /app
+
+USER node
+
+CMD __START_COMMAND__

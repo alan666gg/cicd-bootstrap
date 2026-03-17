@@ -18,6 +18,11 @@
 - `docker-registry-only`
 - `ci-only`
 
+Dockerfile 生成：
+- `go-service`
+- `node-service`
+- `static-web`
+
 ## 安装
 
 这个仓库本身就是一个单独 skill。
@@ -47,6 +52,7 @@ npx skills add https://github.com/alan666gg/cicd-bootstrap.git --skill github-ci
 
 这个 skill 会自动做这些事：
 - 识别项目类型
+- 在需要时生成高性能 Dockerfile
 - 选择 `docker-ssh`、`docker-registry-only` 或 `ci-only`
 - 生成 `ci.yml`
 - 生成 `deploy-test.yml`
@@ -81,7 +87,17 @@ python3 scripts/bootstrap_repo.py \
   --force
 ```
 
-### 2. Monorepo 子服务
+### 2. 没有 Dockerfile 时一键生成并接入 CI/CD
+
+```bash
+python3 scripts/bootstrap_repo.py \
+  --project-root . \
+  --generate-dockerfile \
+  --deploy-strategy docker-registry-only \
+  --force
+```
+
+### 3. Monorepo 子服务
 
 ```bash
 python3 scripts/bootstrap_repo.py \
@@ -91,7 +107,7 @@ python3 scripts/bootstrap_repo.py \
   --force
 ```
 
-### 3. Monorepo 批量生成
+### 4. Monorepo 批量生成
 
 ```bash
 python3 scripts/bootstrap_repo.py \
@@ -101,7 +117,23 @@ python3 scripts/bootstrap_repo.py \
   --force
 ```
 
-### 4. 只做识别，不生成文件
+### 5. 只生成高性能 Dockerfile
+
+```bash
+python3 scripts/generate_dockerfile.py \
+  --project-root . \
+  --service-path services/api
+```
+
+如果你想显式指定模板：
+
+```bash
+python3 scripts/generate_dockerfile.py \
+  --project-root . \
+  --dockerfile-kind static-web
+```
+
+### 6. 只做识别，不生成文件
 
 ```bash
 python3 scripts/detect_project.py --project-root .
@@ -207,6 +239,24 @@ python3 scripts/bootstrap_repo.py --project-root . --force
 - GitHub environment 名称
 
 这样同事只需要运行 bootstrap，不用每次再手敲一堆参数。
+
+## 自动生成高性能 Dockerfile
+
+这版支持自动生成：
+
+- Go 服务：多阶段构建、`go mod` / build cache、非 root 运行
+- Node 服务：builder/runtime 分层、依赖裁剪、非 root 运行
+- 静态前端：Node builder + Nginx runtime
+
+同时会一起生成 `.dockerignore`，减少无效上下文上传。
+
+可以通过 `.github/cicd-bootstrap.json` 统一这些值：
+
+- `generate_dockerfile`
+- `dockerfile_kind`
+- `docker_build_dir`
+- `docker_start_command`
+- `binary_name`
 
 ## 默认安全基线
 

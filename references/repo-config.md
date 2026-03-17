@@ -29,6 +29,13 @@ Organization defaults:
 - `test_environment`
 - `prod_environment`
 
+Dockerfile generation:
+- `generate_dockerfile`
+- `dockerfile_kind`
+- `docker_build_dir`
+- `docker_start_command`
+- `binary_name`
+
 ## Example
 
 ```json
@@ -43,7 +50,10 @@ Organization defaults:
   "enable_security_scan": true,
   "enable_cache": true,
   "test_environment": "test",
-  "prod_environment": "prod"
+  "prod_environment": "prod",
+  "generate_dockerfile": true,
+  "dockerfile_kind": "static-web",
+  "docker_build_dir": "dist"
 }
 ```
 

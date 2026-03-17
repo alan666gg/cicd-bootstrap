@@ -5,6 +5,7 @@ import re
 from pathlib import Path
 from typing import List
 
+from generate_dockerfile import generate_service_dockerfiles
 from generate_checklist import build_checklist
 from render_workflow import (
     read_repo_config,
@@ -60,6 +61,13 @@ def main() -> int:
     parser.add_argument("--app-name", default="", help="App/service name or prefix for multi-service mode")
     parser.add_argument("--project-type", default="auto", help="go-service|node-service|docker-service|auto")
     parser.add_argument("--deploy-mode", "--deploy-strategy", dest="deploy_mode", default="auto", help="ci-only|docker-ssh|docker-registry-only|auto")
+    parser.add_argument("--generate-dockerfile", action="store_true", help="Generate a high-performance Dockerfile before rendering workflows")
+    parser.add_argument("--overwrite-dockerfile", action="store_true", help="Overwrite an existing Dockerfile when generating one")
+    parser.add_argument("--dockerfile-kind", default="auto", help="auto|go-service|node-service|static-web")
+    parser.add_argument("--binary-name", default="", help="Go binary name override for generated Dockerfiles")
+    parser.add_argument("--start-command", default="", help="Node start command override for generated Dockerfiles")
+    parser.add_argument("--build-dir", default="", help="Static-web build output directory override for generated Dockerfiles")
+    parser.add_argument("--no-dockerignore", action="store_true", help="Skip generating .dockerignore with generated Dockerfiles")
     parser.add_argument("--test-target", default="", help="Optional test deploy target label")
     parser.add_argument("--prod-target", default="", help="Optional production deploy target label")
     parser.add_argument("--test-branch", default="", help="Test branch name")
@@ -73,6 +81,10 @@ def main() -> int:
     checklist_file = (project_root / args.checklist_file).resolve()
 
     repo_config = read_repo_config(project_root)
+    args.generate_dockerignore = not args.no_dockerignore
+    dockerfile_results = []
+    if args.generate_dockerfile or bool(repo_config.get("generate_dockerfile")):
+        dockerfile_results = generate_service_dockerfiles(project_root, repo_config, args)
     specs = resolve_service_specs(project_root, repo_config, args)
     workflow_paths = expected_workflow_paths(project_root, workflow_dir, specs)
 
@@ -110,6 +122,7 @@ def main() -> int:
         ],
         "workflow_dir": str(workflow_dir),
         "checklist_file": str(checklist_file),
+        "dockerfiles": dockerfile_results,
         "errors": errors,
     }
     print(json.dumps(result, ensure_ascii=False, indent=2))

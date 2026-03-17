@@ -1,6 +1,6 @@
 ---
 name: github-cicd-bootstrap
-description: Use when a user wants to add or standardize GitHub CI/CD for a repository, especially for Go services, Node services, Dockerized apps, or monorepos with one or more sub-services. This skill detects the project type, supports ci-only, docker-ssh, and docker-registry-only strategies, generates GitHub Actions workflows, creates a setup checklist, and validates the resulting CI/CD files.
+description: Use when a user wants to add or standardize GitHub CI/CD for a repository, especially for Go services, Node services, Dockerized apps, or monorepos with one or more sub-services. This skill detects the project type, can generate high-performance Dockerfiles when needed, supports ci-only, docker-ssh, and docker-registry-only strategies, generates GitHub Actions workflows, creates a setup checklist, and validates the resulting CI/CD files.
 ---
 
 # GitHub CI/CD Bootstrap
@@ -11,6 +11,7 @@ Use it when the user asks to:
 - add GitHub Actions to a repo
 - build a CI/CD pipeline for a service or app
 - standardize test, build, and deploy workflows
+- generate a Dockerfile or improve a Dockerfile before adding CI/CD
 - generate workflow files and the required GitHub secrets checklist
 
 ## Quick Start
@@ -36,6 +37,7 @@ python3 ~/.codex/skills/github-cicd-bootstrap/scripts/bootstrap_repo.py \
 This command:
 - detects the project type
 - chooses the deploy strategy
+- can generate a high-performance Dockerfile first when requested
 - reads `.github/cicd-bootstrap.json` automatically when present
 - writes workflow files to `.github/workflows`
 - generates a setup checklist at `.github/cicd-bootstrap-checklist.md`
@@ -62,6 +64,27 @@ This command:
    ```bash
    python3 scripts/validate_workflow.py --workflow-dir .github/workflows
    ```
+
+### Dockerfile-first path
+
+If the repository does not yet have a `Dockerfile`, generate one first:
+
+```bash
+python3 scripts/generate_dockerfile.py \
+  --project-root . \
+  --service-path services/api
+```
+
+Or let bootstrap do it in one shot:
+
+```bash
+python3 scripts/bootstrap_repo.py \
+  --project-root . \
+  --service-path services/api \
+  --generate-dockerfile \
+  --deploy-strategy docker-registry-only \
+  --force
+```
 
 ### Optional repo config
 
@@ -111,6 +134,12 @@ The generator supports three deploy strategies:
    - use when the repo does not yet have a Docker-based deploy target
    - generates CI plus placeholder deploy workflows that guide the team to choose a release strategy later
 
+It also supports high-performance Dockerfile generation for:
+
+- `go-service`
+- `node-service`
+- `static-web`
+
 ## Workflow
 
 ### 1. Detect the repository shape
@@ -124,6 +153,8 @@ Run `scripts/detect_project.py` first. It decides:
 If detection is wrong, rerun the render step with explicit flags instead of editing the detector.
 For monorepos, prefer `--service-path`.
 For batch generation, use `--service-paths services/api,services/web`.
+
+If the repo is missing a `Dockerfile` but the user wants deployment automation, generate the Dockerfile before rendering workflows.
 
 ### 2. Choose the deploy strategy
 
@@ -186,6 +217,7 @@ Validation checks:
 
 Always summarize:
 - which deploy strategy was chosen
+- whether a Dockerfile was generated
 - which secrets are required
 - which repository variables are required
 - whether branch names need adjusting
@@ -215,8 +247,10 @@ If the user wants direct output in one shot, prefer `scripts/bootstrap_repo.py`.
   - renders workflow files from templates for one or many services
 - `generate_checklist.py`
   - generates the secrets and variables setup checklist
+- `generate_dockerfile.py`
+  - generates high-performance Dockerfiles and `.dockerignore` files
 - `bootstrap_repo.py`
-  - performs detect -> render -> checklist -> validate in one run
+  - can perform dockerfile generation -> detect -> render -> checklist -> validate in one run
 - `validate_workflow.py`
   - runs lightweight validation on generated workflows
 
@@ -233,6 +267,10 @@ If the user wants direct output in one shot, prefer `scripts/bootstrap_repo.py`.
   - `go-service`
   - `node-service`
   - `docker-service`
+- Dockerfile templates:
+  - `go-service`
+  - `node-service`
+  - `static-web`
 - shared deploy templates:
   - `ci-only` placeholders
   - `docker-ssh` remote Docker deployment
