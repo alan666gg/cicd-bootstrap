@@ -186,6 +186,7 @@ python3 scripts/detect_project.py --project-root . --service-path services/api
   "image_registry": "ghcr.io/acme-platform",
   "runner": "ubuntu-latest",
   "enable_security_scan": true,
+  "security_scan_blocking": false,
   "enable_cache": true,
   "test_environment": "test",
   "prod_environment": "prod"
@@ -204,6 +205,8 @@ python3 scripts/bootstrap_repo.py --project-root . --force
 - 这样生成的 GHCR / Docker image name 会更稳，避免大小写导致推送失败
 - `docker-registry-only` workflow 也会在运行时把 `image_registry` 或可选的 `IMAGE_REGISTRY` 变量自动转成小写，并按最终 host 登录镜像仓库
 - monorepo 子服务如果没显式传 `app_name`，会默认生成 `repo-name + service-slug`，降低在 owner 级镜像仓库里撞名的概率
+- 安全扫描默认开启，但 bootstrap 输出里默认是 non-blocking，避免 Trivy 下载波动把第一次接入 CI 的团队直接卡死
+- 把 `security_scan_blocking` 设成 `true` 后，PR / develop 仍然只告警；默认分支和 `release` 分支才会对 `HIGH` / `CRITICAL` 问题阻断
 
 ## deploy strategy 说明
 
@@ -242,6 +245,7 @@ python3 scripts/bootstrap_repo.py --project-root . --force
 - 镜像仓库前缀
 - runner 类型
 - 是否启用安全扫描
+- 是否只在主分支 / release 分支阻断安全扫描
 - 是否启用缓存
 - GitHub environment 名称
 

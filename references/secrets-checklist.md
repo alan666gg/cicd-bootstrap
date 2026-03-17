@@ -33,6 +33,8 @@
 - `runner`
 - `test_environment`
 - `prod_environment`
+- `enable_security_scan`
+- `security_scan_blocking`
 
 ### Optional GitHub Variables
 - `IMAGE_REGISTRY`
@@ -40,6 +42,8 @@
 ### Notes
 - `IMAGE_REGISTRY` overrides the repo config registry prefix for registry-only workflows.
 - The workflow lowercases the final registry prefix before login and push so GHCR-style naming stays valid.
+- Bootstrap defaults security scans to non-blocking so transient Trivy/setup failures do not fail every first-run pipeline.
+- Set `security_scan_blocking` to `true` if you want pushes to the default branch and `release` branches to fail on `HIGH` / `CRITICAL` findings.
 
 ## ci-only
 

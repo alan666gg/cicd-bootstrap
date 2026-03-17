@@ -29,6 +29,7 @@ Organization defaults:
 - `image_registry`
 - `runner`
 - `enable_security_scan`
+- `security_scan_blocking`
 - `enable_cache`
 - `test_environment`
 - `prod_environment`
@@ -52,6 +53,7 @@ Dockerfile generation:
   "image_registry": "ghcr.io/acme-platform",
   "runner": "ubuntu-latest",
   "enable_security_scan": true,
+  "security_scan_blocking": false,
   "enable_cache": true,
   "test_environment": "test",
   "prod_environment": "prod",
@@ -66,3 +68,10 @@ Dockerfile generation:
 1. Explicit CLI flags
 2. `.github/cicd-bootstrap.json`
 3. Auto detection
+
+## Security Scan Defaults
+
+- `enable_security_scan` defaults to `true`.
+- `security_scan_blocking` defaults to `false` so bootstrap output is resilient to transient scanner/network failures.
+- When `security_scan_blocking` is `true`, CI remains non-blocking for pull requests and non-release test branches such as `develop`.
+- When `security_scan_blocking` is `true`, pushes to the default branch and `release` / `release/*` branches block on `HIGH` / `CRITICAL` findings.

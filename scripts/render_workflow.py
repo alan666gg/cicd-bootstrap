@@ -179,9 +179,17 @@ def build_node_cache_block(enable_cache: bool, package_manager: str, service_pat
 """
 
 
-def build_security_scan_job(enable_security_scan: bool, runner: str, build_job_name: str, scan_ref: str) -> str:
+def build_security_scan_job(
+    enable_security_scan: bool,
+    security_scan_blocking: bool,
+    runner: str,
+    build_job_name: str,
+    scan_ref: str,
+    default_branch: str,
+) -> str:
     if not enable_security_scan:
         return ""
+    blocking_literal = "true" if security_scan_blocking else "false"
     return f"""
   security-scan:
     runs-on: {runner}
@@ -189,17 +197,44 @@ def build_security_scan_job(enable_security_scan: bool, runner: str, build_job_n
     needs: {build_job_name}
     permissions:
       contents: read
+    env:
+      SECURITY_SCAN_BLOCKING: "{blocking_literal}"
+      SECURITY_SCAN_DEFAULT_BRANCH: "{default_branch}"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Decide security scan mode
+        id: scan_mode
+        shell: bash
+        run: |
+          blocking="false"
+          if [[ "$SECURITY_SCAN_BLOCKING" == "true" && "$GITHUB_EVENT_NAME" != "pull_request" ]]; then
+            if [[ "$GITHUB_REF_NAME" == "$SECURITY_SCAN_DEFAULT_BRANCH" || "$GITHUB_REF_NAME" == release || "$GITHUB_REF_NAME" == release/* || "$GITHUB_REF_NAME" == release-* ]]; then
+              blocking="true"
+            fi
+          fi
+          if [[ "$blocking" == "true" ]]; then
+            echo "mode=blocking" >> "$GITHUB_OUTPUT"
+            echo "continue_on_error=false" >> "$GITHUB_OUTPUT"
+            echo "exit_code=1" >> "$GITHUB_OUTPUT"
+          else
+            echo "mode=non-blocking" >> "$GITHUB_OUTPUT"
+            echo "continue_on_error=true" >> "$GITHUB_OUTPUT"
+            echo "exit_code=0" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Explain security scan mode
+        run: echo "Security scan mode: ${{{{ steps.scan_mode.outputs.mode }}}}"
+
       - name: Run Trivy filesystem scan
+        continue-on-error: ${{{{ steps.scan_mode.outputs.continue_on_error == 'true' }}}}
         uses: aquasecurity/trivy-action@0.28.0
         with:
           scan-type: fs
           scan-ref: {scan_ref}
           format: table
-          exit-code: '1'
+          exit-code: ${{{{ steps.scan_mode.outputs.exit_code }}}}
           ignore-unfixed: true
           severity: CRITICAL,HIGH
 """
@@ -256,6 +291,7 @@ def resolve_service_specs(project_root: Path, repo_config: Dict[str, object], ar
     registry = image_registry(repo_config)
     enable_cache = bool_from_config(repo_config, "enable_cache", True)
     enable_security_scan = bool_from_config(repo_config, "enable_security_scan", True)
+    security_scan_blocking = bool_from_config(repo_config, "security_scan_blocking", False)
 
     specs: List[Dict[str, object]] = []
     for current_service_path in service_paths:
@@ -304,6 +340,7 @@ def resolve_service_specs(project_root: Path, repo_config: Dict[str, object], ar
                 "image_registry_host": image_registry_host(registry),
                 "enable_cache": enable_cache,
                 "enable_security_scan": enable_security_scan,
+                "security_scan_blocking": security_scan_blocking,
                 "multi_service": multi_service,
             }
         )
@@ -316,7 +353,14 @@ def build_replacements(spec: Dict[str, object], workflow_kind: str) -> Dict[str,
     go_cache_steps = build_go_cache_steps(bool(spec["enable_cache"]))
     node_cache_block = build_node_cache_block(bool(spec["enable_cache"]), str(detected.get("package_manager") or "npm"), service_path)
     build_job_name = "docker-build" if spec["project_type"] == "docker-service" else "test-and-build"
-    security_scan_job = build_security_scan_job(bool(spec["enable_security_scan"]), str(spec["runner"]), build_job_name, service_path)
+    security_scan_job = build_security_scan_job(
+        bool(spec["enable_security_scan"]),
+        bool(spec["security_scan_blocking"]),
+        str(spec["runner"]),
+        build_job_name,
+        service_path,
+        str(spec["default_branches"][0]),
+    )
 
     return {
         "APP_NAME": str(spec["app_name"]),

@@ -105,6 +105,7 @@ Example:
   "image_registry": "ghcr.io/acme-platform",
   "runner": "ubuntu-latest",
   "enable_security_scan": true,
+  "security_scan_blocking": false,
   "enable_cache": true
 }
 ```
@@ -112,6 +113,7 @@ Example:
 `app_name` and generated multi-service `slug` values are normalized to lowercase kebab-case before they are used in workflow names, Docker image names, and related artifact names. For example, `sourceBinance` becomes `source-binance`.
 For `docker-registry-only`, the workflow also lowercases the final registry prefix at runtime, so defaults like `ghcr.io/${{ github.repository_owner }}` and optional `IMAGE_REGISTRY` overrides remain valid for GHCR and similar registries.
 When a monorepo service does not specify `app_name`, the generator prefixes the service slug with the repository name by default so image names stay unique under owner-scoped registries.
+Bootstrap output keeps security scans enabled but defaults them to non-blocking mode so transient Trivy setup failures do not fail every first-run pipeline. Setting `security_scan_blocking` to `true` switches pushes to the default branch and `release` branches into blocking mode while keeping pull requests and `develop`-style test branches non-blocking.
 
 When this file exists, `bootstrap_repo.py` will load it automatically. CLI flags still override the config file.
 
