@@ -1,15 +1,22 @@
-name: CI
+name: __WORKFLOW_NAME__
 
 on:
   pull_request:
   push:
     branches:
-      - main
-      - __TEST_BRANCH__
+__CI_BRANCH_LINES__
+
+permissions:
+  contents: read
+
+concurrency:
+  group: __CONCURRENCY_GROUP__
+  cancel-in-progress: true
 
 jobs:
   test-and-build:
-    runs-on: ubuntu-latest
+    runs-on: __RUNNER__
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: __SERVICE_PATH__
@@ -21,17 +28,18 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
+__NODE_CACHE_BLOCK__
 
       - name: Install dependencies
-        run: npm ci
+        run: __INSTALL_COMMAND__
 
       - name: Run tests
-        run: npm test --if-present
+        run: __TEST_COMMAND__
 
       - name: Build
-        run: npm run build --if-present
+        run: __BUILD_COMMAND__
 
       - name: Validate Docker build
         if: ${{ hashFiles('__DOCKER_CONTEXT__/Dockerfile') != '' }}
         run: docker build -t __APP_NAME__:ci __DOCKER_CONTEXT__
+__SECURITY_SCAN_JOB__

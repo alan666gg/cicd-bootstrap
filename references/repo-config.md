@@ -8,21 +8,42 @@ The bootstrap flow can read an optional repository config file:
 
 ## Supported fields
 
+Core:
 - `app_name`
 - `project_type`
-- `deploy_mode`
+- `deploy_strategy` or `deploy_mode`
 - `service_path`
+- `service_paths`
+
+Branch defaults:
+- `default_branch`
+- `default_branches`
 - `test_branch`
+- `test_branches`
+
+Organization defaults:
+- `image_registry`
+- `runner`
+- `enable_security_scan`
+- `enable_cache`
+- `test_environment`
+- `prod_environment`
 
 ## Example
 
 ```json
 {
-  "app_name": "my-service",
-  "project_type": "go-service",
-  "deploy_mode": "docker-ssh",
-  "service_path": "services/api",
-  "test_branch": "develop"
+  "app_name": "kairos-api",
+  "deploy_strategy": "docker-registry-only",
+  "service_paths": ["services/api", "services/worker"],
+  "default_branch": "main",
+  "test_branches": ["develop", "release/*"],
+  "image_registry": "ghcr.io/acme-platform",
+  "runner": "ubuntu-latest",
+  "enable_security_scan": true,
+  "enable_cache": true,
+  "test_environment": "test",
+  "prod_environment": "prod"
 }
 ```
 

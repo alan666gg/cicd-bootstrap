@@ -1,43 +1,49 @@
 # Secrets Checklist
 
-## docker-ssh mode
+## docker-ssh
 
-### Test deploy
-
-Required GitHub Secrets:
+### Required GitHub Secrets
 - `TEST_SSH_KEY`
-
-Required GitHub Variables:
-- `TEST_HOST`
-- `TEST_USER`
-
-Optional:
-- `TEST_PORT`
-
-### Production deploy
-
-Required GitHub Secrets:
 - `PROD_SSH_KEY`
 
-Required GitHub Variables:
+### Required GitHub Variables
+- `TEST_HOST`
+- `TEST_USER`
+- `TEST_REMOTE_DIR`
+- `TEST_CONTAINER_NAME`
+- `TEST_DOCKER_RUN_ARGS`
 - `PROD_HOST`
 - `PROD_USER`
+- `PROD_REMOTE_DIR`
+- `PROD_CONTAINER_NAME`
+- `PROD_DOCKER_RUN_ARGS`
 
-Optional:
+### Optional Variables
+- `TEST_PORT`
 - `PROD_PORT`
 
-## ci-only mode
+## docker-registry-only
 
-### Test deploy
+### Required GitHub Secrets
+- `REGISTRY_USERNAME`
+- `REGISTRY_PASSWORD`
 
-No fixed secrets are required by the generated placeholder workflow.
+### Typical repo config defaults
+- `image_registry`
+- `runner`
+- `test_environment`
+- `prod_environment`
 
-### Production deploy
+## ci-only
 
-No fixed secrets are required by the generated placeholder workflow.
+### Required GitHub Secrets
+- none
+
+### Required GitHub Variables
+- none
 
 ## Notes
 
-- `TEST_DOCKER_RUN_ARGS` and `PROD_DOCKER_RUN_ARGS` should include everything needed to run the service on the target host, for example:
-  - `--restart unless-stopped -p 8008:8008 -v /srv/my-service/conf:/app/conf:ro -v /srv/my-service/log:/app/log`
-- For `ci-only`, the generated deploy workflows are intentionally placeholders. Teams should replace them once the real deployment target is chosen.
+- `docker-ssh` assumes the remote host already knows how to run the service.
+- `docker-registry-only` publishes images only. Another system is expected to deploy them.
+- Teams should prefer `.github/cicd-bootstrap.json` for shared defaults instead of repeating values in every repository.

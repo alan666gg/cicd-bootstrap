@@ -1,6 +1,6 @@
 ---
 name: github-cicd-bootstrap
-description: Use when a user wants to add or standardize GitHub CI/CD for a repository, especially for Go services, Node services, or Dockerized apps. This skill detects the project type, generates generic GitHub Actions workflows, creates a setup checklist, and validates the resulting CI/CD files.
+description: Use when a user wants to add or standardize GitHub CI/CD for a repository, especially for Go services, Node services, Dockerized apps, or monorepos with one or more sub-services. This skill detects the project type, supports ci-only, docker-ssh, and docker-registry-only strategies, generates GitHub Actions workflows, creates a setup checklist, and validates the resulting CI/CD files.
 ---
 
 # GitHub CI/CD Bootstrap
@@ -35,7 +35,7 @@ python3 ~/.codex/skills/github-cicd-bootstrap/scripts/bootstrap_repo.py \
 
 This command:
 - detects the project type
-- chooses the deploy mode
+- chooses the deploy strategy
 - reads `.github/cicd-bootstrap.json` automatically when present
 - writes workflow files to `.github/workflows`
 - generates a setup checklist at `.github/cicd-bootstrap-checklist.md`
@@ -75,10 +75,14 @@ Example:
 ```json
 {
   "app_name": "my-service",
-  "project_type": "go-service",
-  "deploy_mode": "docker-ssh",
-  "service_path": "services/api",
-  "test_branch": "develop"
+  "deploy_strategy": "docker-registry-only",
+  "service_paths": ["services/api", "services/worker"],
+  "default_branch": "main",
+  "test_branches": ["develop", "release/*"],
+  "image_registry": "ghcr.io/acme-platform",
+  "runner": "ubuntu-latest",
+  "enable_security_scan": true,
+  "enable_cache": true
 }
 ```
 
@@ -93,13 +97,17 @@ When this file exists, `bootstrap_repo.py` will load it automatically. CLI flags
 - `deploy-prod.yml`
   - production deployment workflow
 
-The generator supports two deploy patterns:
+The generator supports three deploy strategies:
 
 1. `docker-ssh`
    - use when the repo is already Dockerized
    - builds an image in GitHub Actions and switches the container on a remote host over SSH
 
-2. `ci-only`
+2. `docker-registry-only`
+   - use when the repo is already Dockerized but another platform handles deployment
+   - builds and pushes images only
+
+3. `ci-only`
    - use when the repo does not yet have a Docker-based deploy target
    - generates CI plus placeholder deploy workflows that guide the team to choose a release strategy later
 
@@ -115,12 +123,14 @@ Run `scripts/detect_project.py` first. It decides:
 
 If detection is wrong, rerun the render step with explicit flags instead of editing the detector.
 For monorepos, prefer `--service-path`.
+For batch generation, use `--service-paths services/api,services/web`.
 
-### 2. Choose the deploy mode
+### 2. Choose the deploy strategy
 
 Use this decision order:
 
 - If the repo has a `Dockerfile`, prefer `docker-ssh`
+- If the repo already deploys from a container registry, prefer `docker-registry-only`
 - Else use `ci-only`
 - If the user wants deployment but the repo is not yet Dockerized, generate CI first and explain that deployment still needs a runtime target
 
@@ -134,7 +144,7 @@ python3 scripts/render_workflow.py \
   --project-root . \
   --service-path services/api \
   --output-dir .github/workflows \
-  --deploy-mode docker-ssh \
+  --deploy-strategy docker-ssh \
   --app-name my-service
 ```
 
@@ -144,8 +154,17 @@ python3 scripts/render_workflow.py \
   --project-root . \
   --service-path services/api \
   --output-dir .github/workflows \
-  --deploy-mode ci-only \
+  --deploy-strategy ci-only \
   --app-name my-service
+```
+
+Recommended command for a multi-service monorepo:
+```bash
+python3 scripts/render_workflow.py \
+  --project-root . \
+  --service-paths services/api,services/web \
+  --deploy-strategy docker-registry-only \
+  --output-dir .github/workflows
 ```
 
 ### 4. Validate before presenting the result
@@ -156,20 +175,24 @@ python3 scripts/validate_workflow.py --workflow-dir .github/workflows
 ```
 
 Validation checks:
-- required workflow files exist
+- all generated workflow files exist
 - unresolved placeholders are not left behind
-- each workflow has `name`, `on`, and `jobs`
+- each workflow has `name`, `on`, `jobs`, `permissions`, and `concurrency`
+- deploy workflows include `environment`
+- checklist references stay aligned with secrets / variables used by workflows
+- `actionlint` runs automatically when available
 
 ### 5. Tell the user what still needs manual input
 
 Always summarize:
-- which deploy mode was chosen
+- which deploy strategy was chosen
 - which secrets are required
 - which repository variables are required
 - whether branch names need adjusting
+- whether runner / image registry / security scan defaults came from repo config
 
 Use [references/secrets-checklist.md](references/secrets-checklist.md) when summarizing setup requirements.
-Use [references/deploy-patterns.md](references/deploy-patterns.md) when deciding between `docker-ssh` and `ci-only`.
+Use [references/deploy-patterns.md](references/deploy-patterns.md) when deciding between `docker-ssh`, `docker-registry-only`, and `ci-only`.
 Use [references/repo-config.md](references/repo-config.md) when a team wants to standardize defaults across many repositories.
 If the user wants direct output in one shot, prefer `scripts/bootstrap_repo.py`.
 
@@ -179,6 +202,7 @@ If the user wants direct output in one shot, prefer `scripts/bootstrap_repo.py`.
 - Prefer generating to `.github/workflows` and then showing a concise diff summary.
 - If the repository already has bespoke CI/CD, preserve the established pattern rather than forcing the templates here.
 - Prefer `docker-ssh` only if the repo is already Dockerized or the user explicitly wants Docker-based delivery.
+- Prefer `docker-registry-only` when the repo is Dockerized but release orchestration belongs to another platform team.
 - Prefer `ci-only` when the release target is still undecided.
 
 ## Resources
@@ -188,7 +212,7 @@ If the user wants direct output in one shot, prefer `scripts/bootstrap_repo.py`.
 - `detect_project.py`
   - identifies project type and deploy affordances
 - `render_workflow.py`
-  - renders workflow files from templates
+  - renders workflow files from templates for one or many services
 - `generate_checklist.py`
   - generates the secrets and variables setup checklist
 - `bootstrap_repo.py`
@@ -199,7 +223,7 @@ If the user wants direct output in one shot, prefer `scripts/bootstrap_repo.py`.
 ### references/
 
 - `deploy-patterns.md`
-  - when to choose `docker-ssh` vs `ci-only`
+  - when to choose `docker-ssh` vs `docker-registry-only` vs `ci-only`
 - `secrets-checklist.md`
   - required GitHub Secrets and Variables by deploy mode
 
@@ -212,3 +236,4 @@ If the user wants direct output in one shot, prefer `scripts/bootstrap_repo.py`.
 - shared deploy templates:
   - `ci-only` placeholders
   - `docker-ssh` remote Docker deployment
+  - `docker-registry-only` image publishing

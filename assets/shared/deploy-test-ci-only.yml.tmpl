@@ -1,11 +1,20 @@
-name: Deploy Test
+name: __WORKFLOW_NAME__
 
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: __CONCURRENCY_GROUP__
+  cancel-in-progress: true
+
 jobs:
   guidance:
-    runs-on: ubuntu-latest
+    runs-on: __RUNNER__
+    timeout-minutes: 10
+    environment: __TEST_ENVIRONMENT__
     steps:
       - name: Explain next step
         run: |

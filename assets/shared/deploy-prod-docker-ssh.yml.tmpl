@@ -1,11 +1,20 @@
-name: Deploy Prod
+name: __WORKFLOW_NAME__
 
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: __CONCURRENCY_GROUP__
+  cancel-in-progress: true
+
 jobs:
   deploy-prod:
-    runs-on: ubuntu-latest
+    runs-on: __RUNNER__
+    timeout-minutes: 30
+    environment: __PROD_ENVIRONMENT__
     env:
       APP_NAME: __APP_NAME__
       IMAGE_TAG: __APP_NAME__:${{ github.sha }}

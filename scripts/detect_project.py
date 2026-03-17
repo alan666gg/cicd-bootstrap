@@ -41,6 +41,16 @@ def detect_build_command(root: Path, project_type: str, package_manager: Optiona
     return "docker build -f Dockerfile ."
 
 
+def detect_install_command(project_type: str, package_manager: Optional[str]) -> str:
+    if project_type != "node-service":
+        return ""
+    if package_manager == "pnpm":
+        return "pnpm install --frozen-lockfile"
+    if package_manager == "yarn":
+        return "yarn install --frozen-lockfile"
+    return "npm ci"
+
+
 def find_candidates(project_root: Path) -> List[str]:
     candidates = []
     ignore_names = {".git", ".github", "node_modules", "vendor", "__pycache__"}
@@ -83,6 +93,7 @@ def detect_project(root: Path) -> Dict[str, object]:
         "has_dockerfile": has_dockerfile,
         "deploy_mode": deploy_mode,
         "app_name": app_name,
+        "install_command": detect_install_command(project_type, package_manager),
         "test_command": detect_test_command(root, project_type, package_manager),
         "build_command": detect_build_command(root, project_type, package_manager),
     }
