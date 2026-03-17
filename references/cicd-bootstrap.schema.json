@@ -1,0 +1,180 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/alan666gg/cicd-bootstrap/references/cicd-bootstrap.schema.json",
+  "title": "cicd-bootstrap config",
+  "type": "object",
+  "additionalProperties": true,
+  "properties": {
+    "config_version": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 1
+    },
+    "app_name": {
+      "type": "string"
+    },
+    "project_type": {
+      "type": "string",
+      "enum": ["go-service", "node-service", "python-service", "java-service", "rust-service", "docker-service", "auto"]
+    },
+    "deploy_mode": {
+      "type": "string",
+      "enum": ["ci-only", "docker-ssh", "docker-registry-only", "auto"]
+    },
+    "deploy_strategy": {
+      "type": "string",
+      "enum": ["ci-only", "docker-ssh", "docker-registry-only", "auto"]
+    },
+    "service_path": {
+      "type": "string"
+    },
+    "service_paths": {
+      "oneOf": [
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        {
+          "type": "string"
+        }
+      ]
+    },
+    "default_branch": {
+      "type": "string"
+    },
+    "default_branches": {
+      "oneOf": [
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        {
+          "type": "string"
+        }
+      ]
+    },
+    "test_branch": {
+      "type": "string"
+    },
+    "test_branches": {
+      "oneOf": [
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        {
+          "type": "string"
+        }
+      ]
+    },
+    "image_registry": {
+      "type": "string"
+    },
+    "healthcheck_url_test": {
+      "type": "string"
+    },
+    "healthcheck_url_prod": {
+      "type": "string"
+    },
+    "healthcheck_timeout_seconds": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "rollback_on_failure": {
+      "type": "boolean"
+    },
+    "remote_image_retention": {
+      "type": "integer",
+      "minimum": 0,
+      "default": 3
+    },
+    "runner": {
+      "type": "string"
+    },
+    "enable_security_scan": {
+      "type": "boolean"
+    },
+    "security_scan_blocking": {
+      "type": "boolean"
+    },
+    "enable_cache": {
+      "type": "boolean"
+    },
+    "test_environment": {
+      "type": "string"
+    },
+    "staging_environment": {
+      "type": "string"
+    },
+    "prod_environment": {
+      "type": "string"
+    },
+    "default_shell": {
+      "type": "string",
+      "default": "bash --noprofile --norc -euo pipefail {0}"
+    },
+    "default_job_timeout_minutes": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 20
+    },
+    "deploy_job_timeout_minutes": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 30
+    },
+    "action_pin_mode": {
+      "type": "string",
+      "enum": ["tag", "sha"],
+      "default": "tag"
+    },
+    "allow_actions": {
+      "oneOf": [
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        {
+          "type": "string"
+        }
+      ],
+      "default": []
+    },
+    "pinned_actions": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string",
+        "pattern": "^[0-9a-f]{40}$"
+      },
+      "default": {}
+    },
+    "generate_dockerfile": {
+      "type": "boolean"
+    },
+    "dockerfile_kind": {
+      "type": "string",
+      "enum": ["go-service", "node-service", "python-service", "java-service", "rust-service", "static-web", "auto"]
+    },
+    "docker_build_dir": {
+      "type": "string"
+    },
+    "docker_start_command": {
+      "type": "string"
+    },
+    "binary_name": {
+      "type": "string"
+    },
+    "github_repository": {
+      "type": "string",
+      "description": "Optional owner/repo override used by apply_github_config.py"
+    }
+  }
+}

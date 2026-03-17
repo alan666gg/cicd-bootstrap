@@ -62,6 +62,8 @@ def build_checklist(
                 "- `PROD_HEALTHCHECK_TIMEOUT_SECONDS`",
                 "- `TEST_ROLLBACK_ON_FAILURE`",
                 "- `PROD_ROLLBACK_ON_FAILURE`",
+                "- `TEST_REMOTE_IMAGE_RETENTION`",
+                "- `PROD_REMOTE_IMAGE_RETENTION`",
             ]
         )
     elif deploy_mode == "docker-registry-only":
@@ -110,9 +112,16 @@ def build_checklist(
             "- `healthcheck_timeout_seconds`",
             "- `rollback_on_failure`",
             "- `runner`",
+            "- `default_shell`",
+            "- `default_job_timeout_minutes`",
+            "- `deploy_job_timeout_minutes`",
             "- `enable_security_scan`",
             "- `security_scan_blocking`",
+            "- `action_pin_mode`",
+            "- `allow_actions`",
+            "- `pinned_actions`",
             "- `enable_cache`",
+            "- `remote_image_retention`",
             "- `test_environment`",
             "- `prod_environment`",
             "",
@@ -158,8 +167,9 @@ def build_checklist(
             [
                 "1. 先把 Secrets 和 Variables 配齐。",
                 "2. workflow 会自动创建远端目录，并上传镜像 tarball 和 `scripts/remote_deploy.sh`。",
-                "3. 推送到测试分支，观察 `CI` 和 `Deploy Test` 工作流。",
-                "4. 确认测试环境没问题后，再手动触发 `Deploy Prod`。",
+                "3. 如果保留最近 N 个镜像，优先在 repo config 里设置 `remote_image_retention`，或在 GitHub Variables 里覆盖环境值。",
+                "4. 推送到测试分支，观察 `CI` 和 `Deploy Test` 工作流。",
+                "5. 确认测试环境没问题后，再手动触发 `Deploy Prod`。",
             ]
         )
     elif deploy_mode == "docker-registry-only":
@@ -168,8 +178,9 @@ def build_checklist(
                 "1. 先确认镜像仓库前缀是否正确，例如 `ghcr.io/acme-team`。",
                 "2. 如果 registry 前缀放在 `IMAGE_REGISTRY` 变量里，workflow 会自动把前缀转成小写并复用对应 host 登录。",
                 "3. 配置 `REGISTRY_USERNAME` 和 `REGISTRY_PASSWORD`。",
-                "4. 推送到测试分支，确认测试镜像已经成功推送。",
-                "5. 再手动触发生产 workflow，推送生产标签。",
+                "4. 如果变量很多，优先用 `scripts/apply_github_config.py --dry-run` 预览，再批量写入。",
+                "5. 推送到测试分支，确认测试镜像已经成功推送。",
+                "6. 再手动触发生产 workflow，推送生产标签。",
             ]
         )
     else:
@@ -189,6 +200,7 @@ def build_checklist(
             "- 默认开启安全扫描，但 bootstrap 模式下是 non-blocking。",
             "- PR 和 `develop` 这类测试分支默认只告警，不阻断流水线。",
             "- 如果把 `.github/cicd-bootstrap.json` 里的 `security_scan_blocking` 设为 `true`，推送到默认分支和 `release` / `release/*` 分支时会对 `HIGH` / `CRITICAL` 漏洞阻断。",
+            "- `action_pin_mode` 默认为 `tag`；如果切到 `sha`，需要在 `pinned_actions` 里为实际用到的 actions 提供 commit SHA。",
             "",
             "## Docker-SSH 默认部署策略",
             "",
@@ -196,6 +208,12 @@ def build_checklist(
             "- 远端切换逻辑统一走 `scripts/remote_deploy.sh`，便于后续维护。",
             "- 如果配置了 healthcheck URL，部署后会自动探活。",
             "- `rollback_on_failure` 默认开启，healthcheck 失败时会尝试回滚到旧镜像。",
+            "- `remote_image_retention` 默认保留最近 3 个镜像，避免远端 Docker 主机无限堆积历史镜像。",
+            "",
+            "## GitHub 批量配置",
+            "",
+            "- `scripts/apply_github_config.py` 支持 `--dry-run`、`--mode skip|upsert`、变量和 secrets 批量写入。",
+            "- 推荐先跑 dry-run，看清楚将要写入哪些 key，再执行真实写入。",
             "",
             "## 备注",
             "",

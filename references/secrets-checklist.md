@@ -27,6 +27,8 @@
 - `PROD_HEALTHCHECK_TIMEOUT_SECONDS`
 - `TEST_ROLLBACK_ON_FAILURE`
 - `PROD_ROLLBACK_ON_FAILURE`
+- `TEST_REMOTE_IMAGE_RETENTION`
+- `PROD_REMOTE_IMAGE_RETENTION`
 
 ## docker-registry-only
 
@@ -41,6 +43,13 @@
 - `prod_environment`
 - `enable_security_scan`
 - `security_scan_blocking`
+- `action_pin_mode`
+- `allow_actions`
+- `pinned_actions`
+- `default_shell`
+- `default_job_timeout_minutes`
+- `deploy_job_timeout_minutes`
+- `remote_image_retention`
 
 ### Optional GitHub Variables
 - `IMAGE_REGISTRY`
@@ -68,6 +77,7 @@
 - Rollback defaults to enabled for docker-ssh deploys.
 - `docker-registry-only` publishes images only. Another system is expected to deploy them.
 - Teams should prefer `.github/cicd-bootstrap.json` for shared defaults instead of repeating values in every repository.
+- `scripts/apply_github_config.py` can batch-apply variables and secrets with `--dry-run` and `--mode skip|upsert`.
 - Python services usually want `requirements.txt` or `pyproject.toml` committed so dependency install and cache hints stay stable.
 - Java Gradle services should commit `gradlew` and `gradle/wrapper`; the CI template will repair execute permissions automatically.
 - Rust services compile slower on the first run; keeping `Cargo.lock` checked in helps caching and reproducibility.

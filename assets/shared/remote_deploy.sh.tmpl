@@ -9,6 +9,14 @@ DOCKER_RUN_ARGS="${DOCKER_RUN_ARGS:-}"
 HEALTHCHECK_URL="${HEALTHCHECK_URL:-}"
 HEALTHCHECK_TIMEOUT_SECONDS="${HEALTHCHECK_TIMEOUT_SECONDS:-40}"
 ROLLBACK_ON_FAILURE="${ROLLBACK_ON_FAILURE:-true}"
+REMOTE_IMAGE_RETENTION="${REMOTE_IMAGE_RETENTION:-3}"
+DEPLOY_STARTED_AT="$(date +%s)"
+
+log_event() {
+  local level="$1"
+  shift
+  printf '[%s] level=%s %s\n' "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" "$level" "$*"
+}
 
 # shellcheck disable=SC2086
 run_container() {
@@ -22,7 +30,7 @@ cleanup_container() {
 
 wait_for_healthcheck() {
   if [[ -z "$HEALTHCHECK_URL" ]]; then
-    echo "No healthcheck configured; skipping."
+    log_event info "event=healthcheck.skip container=${CONTAINER_NAME}"
     return 0
   fi
 
@@ -33,32 +41,57 @@ wait_for_healthcheck() {
 
   for ((i = 1; i <= attempts; i++)); do
     if curl -fsS "$HEALTHCHECK_URL" >/dev/null; then
-      echo "Healthcheck passed: ${HEALTHCHECK_URL}"
+      log_event info "event=healthcheck.pass url=${HEALTHCHECK_URL} attempt=${i}"
       return 0
     fi
     sleep 2
   done
 
-  echo "Healthcheck failed after ${HEALTHCHECK_TIMEOUT_SECONDS}s: ${HEALTHCHECK_URL}"
+  log_event error "event=healthcheck.fail url=${HEALTHCHECK_URL} timeout_seconds=${HEALTHCHECK_TIMEOUT_SECONDS}"
   return 1
 }
 
 rollback() {
   local old_image="$1"
   if [[ "$ROLLBACK_ON_FAILURE" != "true" ]]; then
-    echo "Rollback disabled; leaving failed deployment stopped."
+    log_event warn "event=rollback.skip reason=disabled"
     return 0
   fi
   if [[ -z "$old_image" ]]; then
-    echo "No previous image found; nothing to roll back to."
+    log_event warn "event=rollback.skip reason=no_previous_image"
     return 0
   fi
 
-  echo "Rolling back to previous image: ${old_image}"
+  log_event warn "event=rollback.start image=${old_image}"
   cleanup_container
   run_container "$old_image"
+  log_event info "event=rollback.complete image=${old_image}"
 }
 
+prune_old_images() {
+  if ! [[ "$REMOTE_IMAGE_RETENTION" =~ ^[0-9]+$ ]]; then
+    log_event warn "event=image_prune.skip reason=invalid_retention retention=${REMOTE_IMAGE_RETENTION}"
+    return 0
+  fi
+  if (( REMOTE_IMAGE_RETENTION < 1 )); then
+    log_event info "event=image_prune.skip reason=disabled"
+    return 0
+  fi
+
+  local repository="${IMAGE_TAG%%:*}"
+  mapfile -t image_ids < <(docker image ls "$repository" --format '{{.ID}}' | awk '!seen[$0]++')
+  if (( ${#image_ids[@]} <= REMOTE_IMAGE_RETENTION )); then
+    log_event info "event=image_prune.skip reason=below_threshold count=${#image_ids[@]} keep=${REMOTE_IMAGE_RETENTION}"
+    return 0
+  fi
+
+  for image_id in "${image_ids[@]:REMOTE_IMAGE_RETENTION}"; do
+    docker image rm -f "$image_id" >/dev/null 2>&1 || true
+  done
+  log_event info "event=image_prune.complete repository=${repository} keep=${REMOTE_IMAGE_RETENTION}"
+}
+
+log_event info "event=deploy.start image=${IMAGE_TAG} container=${CONTAINER_NAME}"
 docker load -i "${REMOTE_DIR}/${TARBALL_NAME}"
 
 old_image="$(docker inspect -f '{{.Config.Image}}' "${CONTAINER_NAME}" 2>/dev/null || true)"
@@ -71,7 +104,10 @@ if ! wait_for_healthcheck; then
   exit 1
 fi
 
-echo "Deploy succeeded"
+prune_old_images
+
+deploy_duration="$(( $(date +%s) - DEPLOY_STARTED_AT ))"
+log_event info "event=deploy.success image=${IMAGE_TAG} container=${CONTAINER_NAME} duration_seconds=${deploy_duration}"
 echo "image_tag=${IMAGE_TAG}"
 echo "container_name=${CONTAINER_NAME}"
 if docker port "${CONTAINER_NAME}" >/dev/null 2>&1; then

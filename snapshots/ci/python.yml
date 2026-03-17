@@ -1,0 +1,98 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - develop
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-python-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: "bash --noprofile --norc -euo pipefail {0}"
+        working-directory: .
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            pyproject.toml
+
+      - name: Install dependencies
+        run: python -m pip install --upgrade pip && python -m pip install . && python -m pip install pytest
+
+      - name: Run tests
+        run: python -m pytest -q
+
+      - name: Build
+        run: python -m compileall .
+
+      - name: Validate Docker build
+        if: ${{ hashFiles('./Dockerfile') != '' }}
+        run: docker build -t python:ci .
+
+  security-scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: test-and-build
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: "bash --noprofile --norc -euo pipefail {0}"
+    env:
+      SECURITY_SCAN_BLOCKING: "false"
+      SECURITY_SCAN_DEFAULT_BRANCH: "main"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Decide security scan mode
+        id: scan_mode
+        run: |
+          blocking="false"
+          if [[ "$SECURITY_SCAN_BLOCKING" == "true" && "$GITHUB_EVENT_NAME" != "pull_request" ]]; then
+            if [[ "$GITHUB_REF_NAME" == "$SECURITY_SCAN_DEFAULT_BRANCH" || "$GITHUB_REF_NAME" == release || "$GITHUB_REF_NAME" == release/* || "$GITHUB_REF_NAME" == release-* ]]; then
+              blocking="true"
+            fi
+          fi
+          if [[ "$blocking" == "true" ]]; then
+            echo "mode=blocking" >> "$GITHUB_OUTPUT"
+            echo "continue_on_error=false" >> "$GITHUB_OUTPUT"
+            echo "exit_code=1" >> "$GITHUB_OUTPUT"
+          else
+            echo "mode=non-blocking" >> "$GITHUB_OUTPUT"
+            echo "continue_on_error=true" >> "$GITHUB_OUTPUT"
+            echo "exit_code=0" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Explain security scan mode
+        run: |
+          echo "Security scan mode: ${{ steps.scan_mode.outputs.mode }}"
+
+      - name: Run Trivy filesystem scan
+        continue-on-error: ${{ steps.scan_mode.outputs.continue_on_error == 'true' }}
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          format: table
+          exit-code: ${{ steps.scan_mode.outputs.exit_code }}
+          ignore-unfixed: true
+          severity: CRITICAL,HIGH

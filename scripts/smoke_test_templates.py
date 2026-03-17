@@ -35,6 +35,45 @@ requires-python = ">=3.12"
     write_file(root / "tests" / "test_smoke.py", "def test_smoke():\n    assert True\n")
 
 
+def create_go_project(root: Path) -> None:
+    write_file(
+        root / "go.mod",
+        """module github.com/example/go-smoke
+
+go 1.22
+""",
+    )
+    write_file(
+        root / "main.go",
+        """package main
+
+import "fmt"
+
+func main() {
+    fmt.Println("go smoke")
+}
+""",
+    )
+
+
+def create_node_project(root: Path) -> None:
+    write_file(
+        root / "package.json",
+        """{
+  "name": "node-smoke",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "test": "node -e \\"console.log('node smoke test')\\"",
+    "build": "node -e \\"console.log('node smoke build')\\"",
+    "start": "node index.js"
+  }
+}
+""",
+    )
+    write_file(root / "index.js", "console.log('node smoke')\n")
+
+
 def create_java_project(root: Path) -> None:
     write_file(
         root / "pom.xml",
@@ -126,6 +165,17 @@ def assert_contains(path: Path, expected: List[str]) -> None:
             raise AssertionError(f"{path} missing expected text: {item}")
 
 
+def assert_security_scan_block_style(path: Path) -> None:
+    assert_contains(
+        path,
+        [
+            "- name: Explain security scan mode",
+            "run: |",
+            'echo "Security scan mode: ${{ steps.scan_mode.outputs.mode }}"',
+        ],
+    )
+
+
 def main() -> int:
     temp_root = Path(tempfile.mkdtemp(prefix="github-cicd-bootstrap-smoke-"))
     results: List[Dict[str, object]] = []
@@ -133,6 +183,8 @@ def main() -> int:
 
     try:
         single_projects = [
+            ("go", "go-service", create_go_project),
+            ("node", "node-service", create_node_project),
             ("python", "python-service", create_python_project),
             ("java", "java-service", create_java_project),
             ("rust", "rust-service", create_rust_project),
@@ -149,14 +201,7 @@ def main() -> int:
                 project_root / ".github" / "cicd-bootstrap-checklist.md",
                 ["REGISTRY_USERNAME", "REGISTRY_PASSWORD", "IMAGE_REGISTRY"],
             )
-            assert_contains(
-                project_root / ".github" / "workflows" / "ci.yml",
-                [
-                    "- name: Explain security scan mode",
-                    "run: |",
-                    'echo "Security scan mode: ${{ steps.scan_mode.outputs.mode }}"',
-                ],
-            )
+            assert_security_scan_block_style(project_root / ".github" / "workflows" / "ci.yml")
             results.append(
                 {
                     "scenario": name,
@@ -189,14 +234,7 @@ def main() -> int:
             monorepo_root / ".github" / "cicd-bootstrap-checklist.md",
             ["python-service", "java-service", "rust-service", "REGISTRY_USERNAME", "REGISTRY_PASSWORD"],
         )
-        assert_contains(
-            monorepo_root / ".github" / "workflows" / "ci-services-api.yml",
-            [
-                "- name: Explain security scan mode",
-                "run: |",
-                'echo "Security scan mode: ${{ steps.scan_mode.outputs.mode }}"',
-            ],
-        )
+        assert_security_scan_block_style(monorepo_root / ".github" / "workflows" / "ci-services-api.yml")
         results.append(
             {
                 "scenario": "monorepo-mixed",

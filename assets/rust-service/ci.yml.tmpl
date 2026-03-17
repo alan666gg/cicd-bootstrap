@@ -16,16 +16,17 @@ concurrency:
 jobs:
   test-and-build:
     runs-on: __RUNNER__
-    timeout-minutes: 20
+    timeout-minutes: __JOB_TIMEOUT_MINUTES__
     defaults:
       run:
+        shell: "__DEFAULT_SHELL__"
         working-directory: __SERVICE_PATH__
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: __ACTION_CHECKOUT__
 
       - name: Setup Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: __ACTION_RUST_TOOLCHAIN__
         with:
           toolchain: stable
 

@@ -13,8 +13,11 @@ concurrency:
 jobs:
   guidance:
     runs-on: __RUNNER__
-    timeout-minutes: 10
+    timeout-minutes: __DEPLOY_TIMEOUT_MINUTES__
     environment: __PROD_ENVIRONMENT__
+    defaults:
+      run:
+        shell: "__DEFAULT_SHELL__"
     steps:
       - name: Explain next step
         run: |

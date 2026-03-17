@@ -67,34 +67,9 @@ npx skills add https://github.com/alan666gg/cicd-bootstrap.git --skill github-ci
 - 生成 GitHub Secrets / Variables 清单
 - 对输出做基础校验
 
-## 直接运行脚本
+## 30秒上手
 
-如果你希望手动运行，不经过自然语言触发，可以直接执行脚本。
-
-在 skill 根目录里：
-
-```bash
-python3 scripts/bootstrap_repo.py --project-root .
-```
-
-如果 skill 已安装到默认目录：
-
-```bash
-python3 ~/.codex/skills/github-cicd-bootstrap/scripts/bootstrap_repo.py --project-root .
-```
-
-## 常见用法
-
-### 1. 普通单仓服务
-
-```bash
-python3 scripts/bootstrap_repo.py \
-  --project-root . \
-  --app-name my-service \
-  --force
-```
-
-### 2. 没有 Dockerfile 时一键生成并接入 CI/CD
+最短命令：
 
 ```bash
 python3 scripts/bootstrap_repo.py \
@@ -104,7 +79,72 @@ python3 scripts/bootstrap_repo.py \
   --force
 ```
 
-### 3. Monorepo 子服务
+如果 skill 已安装到默认目录：
+
+```bash
+python3 ~/.codex/skills/github-cicd-bootstrap/scripts/bootstrap_repo.py \
+  --project-root . \
+  --generate-dockerfile \
+  --deploy-strategy docker-registry-only \
+  --force
+```
+
+## 5分钟落地
+
+### 1. 生成 workflow / checklist / Dockerfile
+
+```bash
+python3 scripts/bootstrap_repo.py \
+  --project-root . \
+  --generate-dockerfile \
+  --deploy-strategy docker-registry-only \
+  --force
+```
+
+### 2. 到 GitHub 配置 Secrets / Variables
+
+最常见的是：
+- `REGISTRY_USERNAME`
+- `REGISTRY_PASSWORD`
+- 可选 `IMAGE_REGISTRY`
+
+如果 key 比较多，可以先 dry-run：
+
+```bash
+python3 scripts/apply_github_config.py \
+  --project-root . \
+  --var IMAGE_REGISTRY=ghcr.io/acme-team \
+  --secret-env REGISTRY_USERNAME=REGISTRY_USERNAME \
+  --secret-env REGISTRY_PASSWORD=REGISTRY_PASSWORD \
+  --mode upsert \
+  --dry-run
+```
+
+### 3. 提交并观察 Actions
+
+```bash
+git add .
+git commit -m "chore: bootstrap ci/cd"
+git push
+```
+
+看这几个 workflow：
+- `CI`
+- `Deploy Test`
+- `Deploy Prod`
+
+### 4. 单服务 / Monorepo 常用命令
+
+普通单仓：
+
+```bash
+python3 scripts/bootstrap_repo.py \
+  --project-root . \
+  --app-name my-service \
+  --force
+```
+
+Monorepo 子服务：
 
 ```bash
 python3 scripts/bootstrap_repo.py \
@@ -114,7 +154,7 @@ python3 scripts/bootstrap_repo.py \
   --force
 ```
 
-### 4. Python / Java / Rust 服务
+多语言服务：
 
 ```bash
 python3 scripts/bootstrap_repo.py --project-root . --service-path services/python-api --generate-dockerfile --force
@@ -122,7 +162,7 @@ python3 scripts/bootstrap_repo.py --project-root . --service-path services/java-
 python3 scripts/bootstrap_repo.py --project-root . --service-path services/rust-worker --generate-dockerfile --force
 ```
 
-### 5. Monorepo 批量生成
+Monorepo 批量：
 
 ```bash
 python3 scripts/bootstrap_repo.py \
@@ -132,7 +172,9 @@ python3 scripts/bootstrap_repo.py \
   --force
 ```
 
-### 6. 只生成高性能 Dockerfile
+## 深度配置
+
+### 1. 只生成高性能 Dockerfile
 
 ```bash
 python3 scripts/generate_dockerfile.py \
@@ -156,7 +198,7 @@ python3 scripts/generate_dockerfile.py --project-root . --dockerfile-kind java-s
 python3 scripts/generate_dockerfile.py --project-root . --dockerfile-kind rust-service
 ```
 
-### 7. 只做识别，不生成文件
+### 2. 只做识别，不生成文件
 
 ```bash
 python3 scripts/detect_project.py --project-root .
@@ -167,6 +209,15 @@ python3 scripts/detect_project.py --project-root .
 
 ```bash
 python3 scripts/detect_project.py --project-root . --service-path services/api
+```
+
+### 3. 校验 repo config / workflow / snapshots
+
+```bash
+python3 scripts/validate_repo_config.py --project-root .
+python3 scripts/validate_workflow.py --workflow-dir .github/workflows
+python3 scripts/smoke_test_templates.py
+python3 scripts/verify_template_snapshots.py
 ```
 
 ## 输出内容
@@ -234,8 +285,14 @@ python3 scripts/bootstrap_repo.py --project-root . --force
 - monorepo 子服务如果没显式传 `app_name`，会默认生成 `repo-name + service-slug`，降低在 owner 级镜像仓库里撞名的概率
 - 安全扫描默认开启，但 bootstrap 输出里默认是 non-blocking，避免 Trivy 下载波动把第一次接入 CI 的团队直接卡死
 - 把 `security_scan_blocking` 设成 `true` 后，PR / develop 仍然只告警；默认分支和 `release` 分支才会对 `HIGH` / `CRITICAL` 问题阻断
+- `action_pin_mode` 默认是 `tag`；切到 `sha` 后，需要在 `pinned_actions` 里为实际用到的 actions 填 commit SHA
+- `allow_actions` 可以把生成出来的 workflow 限在团队批准的 action 白名单内
+- workflow 默认 shell 现在是 `bash --noprofile --norc -euo pipefail {0}`
+- `default_job_timeout_minutes` / `deploy_job_timeout_minutes` 可以统一治理超时策略
 - `docker-ssh` workflow 会自动创建远端目录，并把切换逻辑下沉到 `scripts/remote_deploy.sh`
 - 如果配置了 healthcheck URL，部署成功前会自动探活，失败时默认回滚到旧镜像
+- `remote_image_retention` 默认保留最近 3 个镜像，避免远端历史镜像越积越多
+- skill 仓库自己也带了 `.github/workflows/ci.yml`，会跑 smoke test 和 snapshot test
 
 ## deploy strategy 说明
 

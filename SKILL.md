@@ -117,9 +117,15 @@ Example:
   "healthcheck_url_prod": "http://127.0.0.1:8080/healthz",
   "healthcheck_timeout_seconds": 40,
   "rollback_on_failure": true,
+  "remote_image_retention": 3,
   "runner": "ubuntu-latest",
+  "default_shell": "bash --noprofile --norc -euo pipefail {0}",
+  "default_job_timeout_minutes": 20,
+  "deploy_job_timeout_minutes": 30,
   "enable_security_scan": true,
   "security_scan_blocking": false,
+  "action_pin_mode": "tag",
+  "allow_actions": ["actions/checkout", "docker/build-push-action"],
   "enable_cache": true
 }
 ```
@@ -128,7 +134,9 @@ Example:
 For `docker-registry-only`, the workflow also lowercases the final registry prefix at runtime, so defaults like `ghcr.io/${{ github.repository_owner }}` and optional `IMAGE_REGISTRY` overrides remain valid for GHCR and similar registries.
 When a monorepo service does not specify `app_name`, the generator prefixes the service slug with the repository name by default so image names stay unique under owner-scoped registries.
 Bootstrap output keeps security scans enabled but defaults them to non-blocking mode so transient Trivy setup failures do not fail every first-run pipeline. Setting `security_scan_blocking` to `true` switches pushes to the default branch and `release` branches into blocking mode while keeping pull requests and `develop`-style test branches non-blocking.
-For `docker-ssh`, the generated workflows create the remote directory automatically, upload a generated `scripts/remote_deploy.sh`, run an optional healthcheck, and roll back to the previous image by default when the new container fails healthchecks.
+`action_pin_mode` defaults to `tag`; when set to `sha`, the repo config must provide `pinned_actions` for the actions actually used by the rendered workflow.
+Generated jobs now default to `bash --noprofile --norc -euo pipefail {0}`, keep required permissions/concurrency/timeout fields, and can be constrained by an `allow_actions` whitelist.
+For `docker-ssh`, the generated workflows create the remote directory automatically, upload a generated `scripts/remote_deploy.sh`, run an optional healthcheck, roll back to the previous image by default when the new container fails healthchecks, and prune older images using `remote_image_retention`.
 
 When this file exists, `bootstrap_repo.py` will load it automatically. CLI flags still override the config file.
 
@@ -226,6 +234,7 @@ python3 scripts/render_workflow.py \
 
 Always run:
 ```bash
+python3 scripts/validate_repo_config.py --project-root .
 python3 scripts/validate_workflow.py --workflow-dir .github/workflows
 ```
 
@@ -248,6 +257,7 @@ Always summarize:
 - which repository variables are required
 - whether branch names need adjusting
 - whether runner / image registry / security scan defaults came from repo config
+- whether policy defaults such as shell, timeout, action pin mode, or allowlist came from repo config
 
 Use [references/secrets-checklist.md](references/secrets-checklist.md) when summarizing setup requirements.
 Use [references/deploy-patterns.md](references/deploy-patterns.md) when deciding between `docker-ssh`, `docker-registry-only`, and `ci-only`.
@@ -378,10 +388,16 @@ If the user asks for a very short version, give them this one-liner:
   - generates high-performance Dockerfiles and `.dockerignore` files
 - `bootstrap_repo.py`
   - can perform dockerfile generation -> detect -> render -> checklist -> validate in one run
+- `validate_repo_config.py`
+  - validates `.github/cicd-bootstrap.json` against the bundled compatibility rules and schema defaults
 - `validate_workflow.py`
   - runs lightweight validation on generated workflows
 - `smoke_test_templates.py`
-  - creates temporary sample repos for Python, Java, Rust, and a mixed monorepo, then runs bootstrap + validate
+  - creates temporary sample repos for Go, Node, Python, Java, Rust, and a mixed monorepo, then runs bootstrap + validate
+- `verify_template_snapshots.py`
+  - compares rendered CI workflows for five language fixtures against committed snapshots
+- `apply_github_config.py`
+  - batches GitHub Actions secrets and variables with `gh`, supports `--dry-run` and `--mode skip|upsert`
 
 ### references/
 
@@ -389,6 +405,10 @@ If the user asks for a very short version, give them this one-liner:
   - when to choose `docker-ssh` vs `docker-registry-only` vs `ci-only`
 - `secrets-checklist.md`
   - required GitHub Secrets and Variables by deploy mode
+- `repo-config.md`
+  - config keys, policy defaults, and action supply-chain options
+- `cicd-bootstrap.schema.json`
+  - JSON Schema for editor support and config governance
 
 ### assets/
 

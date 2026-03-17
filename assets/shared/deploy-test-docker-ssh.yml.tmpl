@@ -16,8 +16,11 @@ concurrency:
 jobs:
   deploy-test:
     runs-on: __RUNNER__
-    timeout-minutes: 30
+    timeout-minutes: __DEPLOY_TIMEOUT_MINUTES__
     environment: __TEST_ENVIRONMENT__
+    defaults:
+      run:
+        shell: "__DEFAULT_SHELL__"
     env:
       APP_NAME: __APP_NAME__
       IMAGE_TAG: __APP_NAME__:${{ github.sha }}
@@ -30,9 +33,10 @@ jobs:
       TEST_HEALTHCHECK_URL: ${{ vars.TEST_HEALTHCHECK_URL || '__TEST_HEALTHCHECK_URL__' }}
       TEST_HEALTHCHECK_TIMEOUT_SECONDS: ${{ vars.TEST_HEALTHCHECK_TIMEOUT_SECONDS || '__HEALTHCHECK_TIMEOUT_SECONDS__' }}
       TEST_ROLLBACK_ON_FAILURE: ${{ vars.TEST_ROLLBACK_ON_FAILURE || '__ROLLBACK_ON_FAILURE__' }}
+      TEST_REMOTE_IMAGE_RETENTION: ${{ vars.TEST_REMOTE_IMAGE_RETENTION || '__REMOTE_IMAGE_RETENTION__' }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: __ACTION_CHECKOUT__
 
       - name: Build image
         run: docker build -t "$IMAGE_TAG" __DOCKER_CONTEXT__
@@ -41,7 +45,7 @@ jobs:
         run: docker save "$IMAGE_TAG" -o "${APP_NAME}_${{ github.sha }}.tar"
 
       - name: Setup SSH key
-        uses: webfactory/ssh-agent@v0.9.0
+        uses: __ACTION_SSH_AGENT__
         with:
           ssh-private-key: ${{ secrets.TEST_SSH_KEY }}
 
@@ -60,4 +64,4 @@ jobs:
       - name: Switch container
         run: |
           ssh -p "$TEST_PORT" "${TEST_USER}@${TEST_HOST}" \
-            "IMAGE_TAG='${IMAGE_TAG}' REMOTE_DIR='${TEST_REMOTE_DIR}' TARBALL_NAME='${APP_NAME}_${{ github.sha }}.tar' CONTAINER_NAME='${TEST_CONTAINER_NAME}' DOCKER_RUN_ARGS='${TEST_DOCKER_RUN_ARGS}' HEALTHCHECK_URL='${TEST_HEALTHCHECK_URL}' HEALTHCHECK_TIMEOUT_SECONDS='${TEST_HEALTHCHECK_TIMEOUT_SECONDS}' ROLLBACK_ON_FAILURE='${TEST_ROLLBACK_ON_FAILURE}' bash '${TEST_REMOTE_DIR}/remote_deploy.sh'"
+            "IMAGE_TAG='${IMAGE_TAG}' REMOTE_DIR='${TEST_REMOTE_DIR}' TARBALL_NAME='${APP_NAME}_${{ github.sha }}.tar' CONTAINER_NAME='${TEST_CONTAINER_NAME}' DOCKER_RUN_ARGS='${TEST_DOCKER_RUN_ARGS}' HEALTHCHECK_URL='${TEST_HEALTHCHECK_URL}' HEALTHCHECK_TIMEOUT_SECONDS='${TEST_HEALTHCHECK_TIMEOUT_SECONDS}' ROLLBACK_ON_FAILURE='${TEST_ROLLBACK_ON_FAILURE}' REMOTE_IMAGE_RETENTION='${TEST_REMOTE_IMAGE_RETENTION}' bash '${TEST_REMOTE_DIR}/remote_deploy.sh'"

@@ -31,11 +31,19 @@ Organization defaults:
 - `healthcheck_url_prod`
 - `healthcheck_timeout_seconds`
 - `rollback_on_failure`
+- `remote_image_retention`
 - `runner`
+- `default_shell`
+- `default_job_timeout_minutes`
+- `deploy_job_timeout_minutes`
 - `enable_security_scan`
 - `security_scan_blocking`
+- `action_pin_mode`
+- `allow_actions`
+- `pinned_actions`
 - `enable_cache`
 - `test_environment`
+- `staging_environment`
 - `prod_environment`
 
 Dockerfile generation:
@@ -67,9 +75,15 @@ Detected project types:
   "healthcheck_url_prod": "http://127.0.0.1:8080/healthz",
   "healthcheck_timeout_seconds": 40,
   "rollback_on_failure": true,
+  "remote_image_retention": 3,
   "runner": "ubuntu-latest",
+  "default_shell": "bash --noprofile --norc -euo pipefail {0}",
+  "default_job_timeout_minutes": 20,
+  "deploy_job_timeout_minutes": 30,
   "enable_security_scan": true,
   "security_scan_blocking": false,
+  "action_pin_mode": "tag",
+  "allow_actions": ["actions/checkout", "docker/build-push-action"],
   "enable_cache": true,
   "test_environment": "test",
   "prod_environment": "prod",
@@ -94,6 +108,13 @@ Detected project types:
 - When `security_scan_blocking` is `true`, CI remains non-blocking for pull requests and non-release test branches such as `develop`.
 - When `security_scan_blocking` is `true`, pushes to the default branch and `release` / `release/*` branches block on `HIGH` / `CRITICAL` findings.
 
+## Action Supply Chain Defaults
+
+- `action_pin_mode` defaults to `tag` for maintainability.
+- Set `action_pin_mode` to `sha` when you want stricter supply-chain control.
+- When `action_pin_mode` is `sha`, define `pinned_actions` for every action actually used by the rendered workflow.
+- `allow_actions` lets teams keep generated workflows inside an approved action whitelist.
+
 ## Docker-SSH Deploy Defaults
 
 - `docker-ssh` workflows create the remote directory with `mkdir -p` before upload.
@@ -101,6 +122,7 @@ Detected project types:
 - `healthcheck_url_test` and `healthcheck_url_prod` let you define environment-specific HTTP checks.
 - `healthcheck_timeout_seconds` defaults to `40`.
 - `rollback_on_failure` defaults to `true`, so a failed healthcheck attempts to start the previous image again.
+- `remote_image_retention` defaults to `3`, so old images are pruned after successful deploys.
 
 ## Language Notes
 

@@ -18,6 +18,7 @@ SECRET_REF_RE = re.compile(r"secrets\.([A-Z0-9_]+)")
 VAR_REF_RE = re.compile(r"vars\.([A-Z0-9_]+)")
 TEST_STEP_RE = re.compile(r"\b(test|pytest)\b")
 BUILD_STEP_RE = re.compile(r"\b(build|compile|package)\b")
+UNSAFE_ACTION_REF_RE = re.compile(r"@(main|master|head)$", re.IGNORECASE)
 
 
 def find_checklist(workflow_file: Path, explicit_checklist: Path = None) -> Path:
@@ -31,6 +32,16 @@ def step_text(step: Dict[str, object]) -> str:
     run = str(step.get("run") or "")
     uses = str(step.get("uses") or "")
     return " ".join((name, run, uses)).lower()
+
+
+def job_default_shell(job: Dict[str, object]) -> str:
+    defaults = job.get("defaults")
+    if not isinstance(defaults, dict):
+        return ""
+    run_defaults = defaults.get("run")
+    if not isinstance(run_defaults, dict):
+        return ""
+    return str(run_defaults.get("shell") or "")
 
 
 def validate_file(path: Path, checklist_file: Path = None) -> List[str]:
@@ -84,8 +95,20 @@ def validate_file(path: Path, checklist_file: Path = None) -> List[str]:
                     errors.append(f"{path.name}: job '{job_name}' missing 'timeout-minutes'")
                 if path.name.startswith("deploy-") and "environment" not in job:
                     errors.append(f"{path.name}: deploy job '{job_name}' missing 'environment'")
+                steps = job.get("steps")
+                if isinstance(steps, list):
+                    shell = job_default_shell(job)
+                    if any(isinstance(step, dict) and "run" in step for step in steps) and not shell:
+                        errors.append(f"{path.name}: job '{job_name}' should define defaults.run.shell")
+                    for step in steps:
+                        if not isinstance(step, dict):
+                            continue
+                        uses = str(step.get("uses") or "")
+                        if uses and "@" not in uses:
+                            errors.append(f"{path.name}: step '{step.get('name', '')}' missing action ref version")
+                        if uses and UNSAFE_ACTION_REF_RE.search(uses):
+                            errors.append(f"{path.name}: step '{step.get('name', '')}' uses unsafe moving action ref '{uses}'")
                 if path.name.startswith("ci") and job_name == "test-and-build":
-                    steps = job.get("steps")
                     if not isinstance(steps, list):
                         errors.append(f"{path.name}: job '{job_name}' missing 'steps'")
                         continue
